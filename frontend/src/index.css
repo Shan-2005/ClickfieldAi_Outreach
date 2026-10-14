@@ -1,84 +1,149 @@
+@import "@fontsource-variable/inter";
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
+:root {
+  /* Dark is default */
+  --bg: #0B0F17;
+  --surface: #111723;
+  --surface-2: #172033;
+  --border: #232C3F;
+  --text: #E6EAF2;
+  --muted: #8A94A8;
 
-@layer base {
-  :root {
-    --brand-primary: #000000;
-    --brand-accent: #71717a;
-    --brand-dark: #000000;
-  }
+  --primary: #4F8CFF;
+  --success: #2FBF8A;
+  --warn: #F2B84B;
+  --danger: #F0616D;
+  --info: #8B7CF6;
 
-  .dark {
-    --brand-primary: #ffffff;
-    --brand-accent: #e4e4e7;
-    --brand-dark: #000000;
-  }
+  --shadow: none;
+  --card-border: 1px solid #232C3F;
 
-  body {
-    background-color: #ffffff;
-    color: #09090b;
-    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    margin: 0;
-    padding: 0;
-    overflow-x: hidden;
-    transition: background-color 0.2s ease, color 0.2s ease;
-  }
-
-  .dark body,
-  body.dark {
-    background-color: #000000;
-    color: #f4f4f5;
-  }
+  --font-inter: 'Inter Variable', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-/* Custom crisp monochrome scrollbars */
+[data-theme="light"],
+.light {
+  --bg: #F6F8FB;
+  --surface: #FFFFFF;
+  --surface-2: #F0F3F9;
+  --border: #E1E6F0;
+  --text: #101828;
+  --muted: #5B667A;
+
+  --primary: #2F6FEB;
+  --success: #1E9E70;
+  --warn: #C98A12;
+  --danger: #D6424F;
+  --info: #6D5BE0;
+
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --card-border: 1px solid #E1E6F0;
+}
+
+@theme {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+
+  --color-primary: var(--primary);
+  --color-success: var(--success);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  --radius-card: 12px;
+  --radius-control: 8px;
+  --radius-pill: 999px;
+
+  --font-sans: var(--font-inter);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-inter);
+  transition: background-color 250ms ease, color 250ms ease, border-color 250ms ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Inter font with tabular-nums for all numbers */
+.tabular-nums,
+[data-tabular-nums="true"],
+table,
+.stats-number {
+  font-feature-settings: "tnum" 1, "cv05" 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Smooth transitions for theme toggle on specific properties only */
+.theme-transition {
+  transition: background-color 250ms ease, color 250ms ease, border-color 250ms ease;
+}
+
+/* Custom crisp minimal scrollbars */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f4f4f5;
-}
-
-.dark ::-webkit-scrollbar-track {
-  background: #09090b;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d4d4d8;
-  border-radius: 2px;
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: var(--border);
+  border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a1a1aa;
+  background: var(--muted);
 }
 
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
+/* Focus visible styles: 2px primary ring with 2px offset */
+*:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
-/* Radar pulse animation */
-@keyframes radar-ping {
+/* Shimmer animation for skeleton loading blocks */
+@keyframes shimmer {
   0% {
-    transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.6);
-  }
-  70% {
-    transform: scale(1);
-    box-shadow: 0 0 0 8px rgba(255, 255, 255, 0);
+    background-position: -200% 0;
   }
   100% {
-    transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+    background-position: 200% 0;
   }
 }
 
-.animate-radar {
-  animation: radar-ping 2.5s infinite;
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 25%,
+    var(--border) 50%,
+    var(--surface-2) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite linear;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 120ms !important;
+    scroll-behavior: auto !important;
+  }
 }

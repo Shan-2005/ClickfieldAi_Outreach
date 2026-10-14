@@ -43,6 +43,31 @@ class Settings(BaseSettings):
     )
     COMPLIANCE_EMAIL: str = os.getenv("COMPLIANCE_EMAIL", "compliance@clickfield.ai")
 
+    # Auth & Sessions (8-hour HttpOnly session expiry)
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "clickfield-secret-key-change-in-production-2026")
+    SESSION_EXPIRY_HOURS: int = int(os.getenv("SESSION_EXPIRY_HOURS", "8"))
+    
+    # Mailbox & Outreach SMTP/IMAP (Password lives only in .env, never in DB, never logged)
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.office365.com")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    IMAP_HOST: str = os.getenv("IMAP_HOST", "outlook.office365.com")
+    IMAP_PORT: int = int(os.getenv("IMAP_PORT", "993"))
+    MAIL_USERNAME: str = os.getenv("MAIL_USERNAME", "zoya@clickfield.ai")
+    MAIL_PASSWORD: str = os.getenv("MAIL_PASSWORD", "")
+    SEND_MODE: str = os.getenv("SEND_MODE", "manual") # smtp | manual
+    AUTO_SEND_APPROVED_FOLLOWUPS: bool = os.getenv("AUTO_SEND_APPROVED_FOLLOWUPS", "false").lower() == "true"
+    
+    # Scheduling & Backups
+    CALENDAR_DIGEST_EMAIL: bool = os.getenv("CALENDAR_DIGEST_EMAIL", "false").lower() == "true"
+    BACKUP_DIR: str = os.getenv("BACKUP_DIR", "./backups")
+    BACKUP_RETENTION_DAYS: int = int(os.getenv("BACKUP_RETENTION_DAYS", "14"))
+    
+    # Office Deployment / Network
+    APP_ENV: str = os.getenv("APP_ENV", "development") # development | production | office_lan
+    OFFICE_LAN_HOST: str = os.getenv("OFFICE_LAN_HOST", "0.0.0.0")
+    OFFICE_LAN_PORT: int = int(os.getenv("OFFICE_LAN_PORT", "8000"))
+    PUBLIC_DOMAIN: str = os.getenv("PUBLIC_DOMAIN", "")
+
     # Approved Capabilities (strict grounding: only cite capabilities in this approved list)
     APPROVED_CAPABILITIES: dict = {
         "GENAI": "custom LLM extraction pipelines, local embeddings, and bounded validation loops",

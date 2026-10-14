@@ -3,13 +3,15 @@ import { motion } from 'motion/react';
 import {
   Users, Search, Filter, Mail, Phone, MessageSquare,
   Check, X, Eye, Bookmark, Send, Table as TableIcon,
-  LayoutGrid, ArrowUpDown, ChevronDown
+  LayoutGrid, ArrowUpDown, ChevronDown, Download, UserCheck,
+  FileSpreadsheet, Sparkles, Building2, FileText
 } from 'lucide-react';
 import TruthBadge from '../components/common/TruthBadge';
 import LeadDrawer from '../components/leads/LeadDrawer';
 import { SkeletonTable } from '../components/common/Skeleton';
 import EmptyState from '../components/common/EmptyState';
 import ErrorState from '../components/common/ErrorState';
+import TendersPage from './TendersPage';
 import { useToast } from '../context/ToastContext';
 
 const SECTORS = ['ALL', 'Manufacturing', 'Construction', 'Real Estate'];
@@ -19,11 +21,15 @@ const AREAS = [
 ];
 const STAGES = ['ALL', 'NEW', 'REVIEWED', 'CONTACTED', 'REPLIED', 'PROPOSAL', 'WON'];
 const SIZES = ['ALL', 'Stated', 'Estimated', 'Unknown'];
+const OWNER_OPTIONS = [
+  { id: 'usr-zoya-1', name: 'Zoya Patel (Admin)' },
+  { id: 'usr-rohit-2', name: 'Rohit Sharma (Sales)' }
+];
 
 export default function LeadsPage({ onOpenOutreach, initialFilter }) {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [fetchError, setFetchError] = useState(null);
 
   // Filters
   const [selectedSector, setSelectedSector] = useState(initialFilter?.sector || 'ALL');
@@ -33,6 +39,15 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
   const [contactFilter, setContactFilter] = useState(initialFilter?.contactFilter || 'ALL'); // 'ALL' | 'has_email' | 'phone_only'
   const [searchQuery, setSearchQuery] = useState(initialFilter?.search || '');
   const [viewMode, setViewMode] = useState('table'); // 'table' | 'cards'
+  const [sourceTab, setSourceTab] = useState('leads'); // 'leads' | 'tenders'
+  const [ownerFilter, setOwnerFilter] = useState('ALL'); // 'ALL' | 'MY' | 'UNASSIGNED'
+
+  // Dataset Export modal state
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportPreset, setExportPreset] = useState('Contact-ready'); // 'Contact-ready' | 'Custom'
+  const [exportFormat, setExportFormat] = useState('CSV'); // 'CSV' | 'XLSX'
+  const [exportHistory, setExportHistory] = useState([]);
+  const [exportLoading, setExportLoading] = useState(false);
 
   useEffect(() => {
     if (initialFilter) {
@@ -51,11 +66,84 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
 
-  const { success } = useToast();
+  const { success, error, info } = useToast();
+
+  const fetchExportHistory = async () => {
+    try {
+      const res = await fetch('/api/datasets/history');
+      if (res.ok) {
+        setExportHistory(await res.json());
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleExportSubmit = async (e) => {
+    e.preventDefault();
+    setExportLoading(true);
+    try {
+      const res = await fetch('/api/datasets/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          preset: exportPreset,
+          file_format: exportFormat
+        })
+      });
+
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `clickfield_dataset_${exportPreset.toLowerCase().replace('-', '_')}.${exportFormat.toLowerCase()}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        success(`Exported dataset successfully as ${exportFormat}!`);
+        setShowExportModal(false);
+        fetchExportHistory();
+      } else {
+        const err = await res.json();
+        error(err.detail || 'Failed to export dataset. Viewer role is restricted.');
+      }
+    } catch {
+      error('Network error generating export.');
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleBulkAssign = async (targetUser) => {
+    if (selectedIds.size === 0) return;
+    try {
+      const res = await fetch('/api/chennai-leads/bulk-assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_ids: Array.from(selectedIds),
+          user_id: targetUser.id,
+          user_name: targetUser.name
+        })
+      });
+
+      if (res.ok) {
+        success(`Assigned ${selectedIds.size} leads to ${targetUser.name}.`);
+        setSelectedIds(new Set());
+        fetchLeads();
+      } else {
+        const err = await res.json();
+        error(err.detail || 'Reassignment restricted. Only Admin can reassign leads owned by others.');
+      }
+    } catch {
+      error('Connection error during bulk reassignment.');
+    }
+  };
 
   const fetchLeads = async () => {
     setLoading(true);
-    setError(null);
+    setFetchError(null);
     try {
       const params = new URLSearchParams();
       if (selectedSector !== 'ALL') params.append('sector', selectedSector);
@@ -69,7 +157,7 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
       setLeads(data.items || []);
     } catch (err) {
       console.error(err);
-      setError(err.message || 'Failed to fetch leads from API');
+      setFetchError(err.message || 'Failed to fetch leads from API');
     } finally {
       setLoading(false);
     }
@@ -77,11 +165,19 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
 
   useEffect(() => {
     fetchLeads();
+    fetchExportHistory();
   }, [selectedSector, selectedArea]);
 
-  // Client-side filtering for Contact filter, Size filter, Stage filter, and Search query
+  // Client-side filtering for Contact filter, Size filter, Stage filter, Owner filter, and Search query
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
+      // Owner Filter
+      if (ownerFilter === 'MY') {
+        if (lead.assigned_user_id !== 'usr-zoya-1' && lead.assigned_user_name !== 'Zoya Patel') return false;
+      } else if (ownerFilter === 'UNASSIGNED') {
+        if (lead.assigned_user_id || lead.assigned_user_name) return false;
+      }
+
       // Search
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -117,7 +213,7 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
 
       return true;
     });
-  }, [leads, searchQuery, contactFilter, selectedSize, selectedStage]);
+  }, [leads, searchQuery, contactFilter, selectedSize, selectedStage, ownerFilter]);
 
   const handleRowClick = (lead) => {
     setSelectedLeadId(lead.id);
@@ -143,81 +239,191 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
 
   return (
     <div className="space-y-6">
-      {/* Sticky Filter Bar */}
-      <div className="sticky top-[56px] z-10 p-4 rounded-[12px] bg-[var(--surface)] border border-[var(--border)] shadow-sm space-y-3">
-        {/* Row 1: Sector Segmented Control + Search + View Mode */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          {/* Sector Segmented Control */}
-          <div className="flex items-center p-1 rounded-[8px] bg-[var(--surface-2)] border border-[var(--border)] select-none">
-            {SECTORS.map((sec) => (
-              <button
-                key={sec}
-                type="button"
-                onClick={() => setSelectedSector(sec)}
-                className={`px-3 py-1 rounded-[6px] text-[12px] font-medium transition-colors cursor-pointer ${
-                  selectedSector === sec
-                    ? 'bg-[var(--surface)] text-[var(--text)] font-semibold shadow-xs'
-                    : 'text-[var(--muted)] hover:text-[var(--text)]'
-                }`}
-              >
-                {sec === 'ALL' ? 'All Sectors' : sec}
-              </button>
-            ))}
-          </div>
-
-          {/* Right Controls: Area Select, Search, View Mode */}
-          <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Area Select Dropdown */}
-            <select
-              value={selectedArea}
-              onChange={(e) => setSelectedArea(e.target.value)}
-              className="h-[32px] px-3 rounded-[8px] bg-[var(--surface-2)] border border-[var(--border)] text-[12px] text-[var(--text)] outline-none cursor-pointer"
+      {/* Top Source Switcher: Commercial B2B Directory vs Tenders & RFPs */}
+      <div className="flex flex-wrap items-center justify-between gap-4 p-3 rounded-[12px] bg-[var(--surface)] border border-[var(--border)]">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center bg-[var(--surface-2)] border border-[var(--border)] rounded-[8px] p-0.5 select-none">
+            <button
+              type="button"
+              onClick={() => setSourceTab('leads')}
+              className={`px-3 py-1.5 rounded-[6px] text-[13px] font-medium flex items-center gap-2 transition-all cursor-pointer ${
+                sourceTab === 'leads'
+                  ? 'bg-[var(--surface)] text-[var(--text)] shadow-xs font-semibold'
+                  : 'text-[var(--muted)] hover:text-[var(--text)]'
+              }`}
             >
-              {AREAS.map((area) => (
-                <option key={area} value={area}>
-                  {area === 'ALL' ? 'All Chennai Hubs' : area}
-                </option>
-              ))}
-            </select>
-
-            {/* Stage Select */}
-            <select
-              value={selectedStage}
-              onChange={(e) => setSelectedStage(e.target.value)}
-              className="h-[32px] px-3 rounded-[8px] bg-[var(--surface-2)] border border-[var(--border)] text-[12px] text-[var(--text)] outline-none cursor-pointer"
+              <Building2 className="w-4 h-4 text-[var(--primary)]" />
+              <span>Commercial Leads (MCA / B2B)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSourceTab('tenders')}
+              className={`px-3 py-1.5 rounded-[6px] text-[13px] font-medium flex items-center gap-2 transition-all cursor-pointer ${
+                sourceTab === 'tenders'
+                  ? 'bg-[var(--surface)] text-[var(--text)] shadow-xs font-semibold'
+                  : 'text-[var(--muted)] hover:text-[var(--text)]'
+              }`}
             >
-              {STAGES.map((st) => (
-                <option key={st} value={st}>
-                  {st === 'ALL' ? 'All Stages' : `Stage: ${st}`}
-                </option>
-              ))}
-            </select>
-
-            {/* Table | Cards Toggle */}
-            <div className="flex items-center p-0.5 rounded-[8px] bg-[var(--surface-2)] border border-[var(--border)]">
-              <button
-                type="button"
-                onClick={() => setViewMode('table')}
-                className={`p-1.5 rounded-[6px] transition-colors cursor-pointer ${
-                  viewMode === 'table' ? 'bg-[var(--surface)] text-[var(--text)] shadow-xs' : 'text-[var(--muted)]'
-                }`}
-                title="Table view"
-              >
-                <TableIcon className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('cards')}
-                className={`p-1.5 rounded-[6px] transition-colors cursor-pointer ${
-                  viewMode === 'cards' ? 'bg-[var(--surface)] text-[var(--text)] shadow-xs' : 'text-[var(--muted)]'
-                }`}
-                title="Card grid view"
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-              </button>
-            </div>
+              <FileText className="w-4 h-4 text-[var(--danger)]" />
+              <span>Tenders & RFPs (GeM / CPPP)</span>
+            </button>
           </div>
         </div>
+
+        {/* Right: Export Dataset Button */}
+        {sourceTab === 'leads' && (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowExportModal(true)}
+              className="h-[34px] px-3.5 rounded-[8px] bg-[var(--surface-2)] hover:bg-[var(--surface-2)]/80 border border-[var(--border)] text-[var(--text)] text-[12px] font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-[var(--primary)]" />
+              <span>Export Dataset (CSV/XLSX)</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Render embedded Tenders page if selected */}
+      {sourceTab === 'tenders' ? (
+        <TendersPage onOpenTenderDetail={(t) => {}} />
+      ) : (
+        <>
+          {/* Sticky Filter Bar */}
+          <div className="sticky top-[56px] z-10 p-4 rounded-[12px] bg-[var(--surface)] border border-[var(--border)] shadow-sm space-y-3">
+            {/* Row 1: Sector Segmented Control + Owner Filter Chips + Search + View Mode */}
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              {/* Sector Segmented Control */}
+              <div className="flex items-center p-1 rounded-[8px] bg-[var(--surface-2)] border border-[var(--border)] select-none">
+                {SECTORS.map((sec) => (
+                  <button
+                    key={sec}
+                    type="button"
+                    onClick={() => setSelectedSector(sec)}
+                    className={`px-3 py-1 rounded-[6px] text-[12px] font-medium transition-colors cursor-pointer ${
+                      selectedSector === sec
+                        ? 'bg-[var(--surface)] text-[var(--text)] font-semibold shadow-xs'
+                        : 'text-[var(--muted)] hover:text-[var(--text)]'
+                    }`}
+                  >
+                    {sec === 'ALL' ? 'All Sectors' : sec}
+                  </button>
+                ))}
+              </div>
+
+              {/* Owner Filter Chips */}
+              <div className="flex items-center gap-1.5 bg-[var(--surface-2)] border border-[var(--border)] rounded-[8px] p-0.5 select-none">
+                {[
+                  { id: 'ALL', label: 'All Leads' },
+                  { id: 'MY', label: 'My Leads' },
+                  { id: 'UNASSIGNED', label: 'Unassigned' }
+                ].map((chip) => (
+                  <button
+                    key={chip.id}
+                    type="button"
+                    onClick={() => setOwnerFilter(chip.id)}
+                    className={`px-2.5 py-1 rounded-[6px] text-[11px] font-medium transition-colors cursor-pointer ${
+                      ownerFilter === chip.id
+                        ? 'bg-[var(--surface)] text-[var(--text)] font-semibold shadow-xs'
+                        : 'text-[var(--muted)] hover:text-[var(--text)]'
+                    }`}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Right Controls: Area Select, Search, View Mode */}
+              <div className="flex items-center gap-2.5 flex-wrap">
+                {/* Area Select Dropdown */}
+                <select
+                  value={selectedArea}
+                  onChange={(e) => setSelectedArea(e.target.value)}
+                  className="h-[32px] px-3 rounded-[8px] bg-[var(--surface-2)] border border-[var(--border)] text-[12px] text-[var(--text)] outline-none cursor-pointer"
+                >
+                  {AREAS.map((area) => (
+                    <option key={area} value={area}>
+                      {area === 'ALL' ? 'All Chennai Hubs' : area}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Stage Select */}
+                <select
+                  value={selectedStage}
+                  onChange={(e) => setSelectedStage(e.target.value)}
+                  className="h-[32px] px-3 rounded-[8px] bg-[var(--surface-2)] border border-[var(--border)] text-[12px] text-[var(--text)] outline-none cursor-pointer"
+                >
+                  {STAGES.map((st) => (
+                    <option key={st} value={st}>
+                      {st === 'ALL' ? 'All Stages' : `Stage: ${st}`}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Table | Cards Toggle */}
+                <div className="flex items-center p-0.5 rounded-[8px] bg-[var(--surface-2)] border border-[var(--border)]">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('table')}
+                    className={`p-1.5 rounded-[6px] transition-colors cursor-pointer ${
+                      viewMode === 'table' ? 'bg-[var(--surface)] text-[var(--text)] shadow-xs' : 'text-[var(--muted)]'
+                    }`}
+                    title="Table view"
+                  >
+                    <TableIcon className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('cards')}
+                    className={`p-1.5 rounded-[6px] transition-colors cursor-pointer ${
+                      viewMode === 'cards' ? 'bg-[var(--surface)] text-[var(--text)] shadow-xs' : 'text-[var(--muted)]'
+                    }`}
+                    title="Card grid view"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Bulk Selection Action Bar */}
+            {selectedIds.size > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 p-2.5 rounded-[8px] bg-[var(--primary)]/10 border border-[var(--primary)]/30 text-[12px]">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-[var(--primary)]">
+                    {selectedIds.size} leads selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedIds(new Set())}
+                    className="text-[var(--muted)] hover:text-[var(--text)] underline cursor-pointer ml-1 text-[11px]"
+                  >
+                    Clear selection
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[var(--text)] font-medium">Assign selected to:</span>
+                  <select
+                    onChange={(e) => {
+                      const found = OWNER_OPTIONS.find((o) => o.id === e.target.value);
+                      if (found) handleBulkAssign(found);
+                    }}
+                    defaultValue=""
+                    className="h-[30px] px-2.5 rounded-[6px] bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] outline-none text-[12px] cursor-pointer"
+                  >
+                    <option value="" disabled>-- Select teammate --</option>
+                    {OWNER_OPTIONS.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
 
         {/* Row 2: Contact chips + Size chips + Quick Search input */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-[var(--border)]">
@@ -290,8 +496,8 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
       {/* Leads Content Area */}
       {loading ? (
         <SkeletonTable rows={8} cols={7} />
-      ) : error ? (
-        <ErrorState message={error} onRetry={fetchLeads} />
+      ) : fetchError ? (
+        <ErrorState message={fetchError} onRetry={fetchLeads} />
       ) : filteredLeads.length === 0 ? (
         <EmptyState
           text="No verified leads match your current filter parameters."
@@ -563,6 +769,151 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
           onOpenOutreach?.(l);
         }}
       />
+      </>
+      )}
+
+      {/* Dataset Export Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-[540px] bg-[var(--surface)] border border-[var(--border)] rounded-[12px] p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+              <div>
+                <h3 className="text-[16px] font-semibold text-[var(--text)]">Export Lead Dataset</h3>
+                <p className="text-[12px] text-[var(--muted)]">
+                  Generates verified CSV or XLSX files with truth statuses and compliance columns.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowExportModal(false)}
+                className="p-1 rounded text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleExportSubmit} className="space-y-4 text-[13px]">
+              <div>
+                <label className="block text-[12px] font-medium text-[var(--muted)] mb-1.5">
+                  Preset Profile
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div
+                    onClick={() => setExportPreset('Contact-ready')}
+                    className={`p-3 rounded-[8px] border cursor-pointer transition-all ${
+                      exportPreset === 'Contact-ready'
+                        ? 'bg-[var(--primary)]/10 border-[var(--primary)]'
+                        : 'bg-[var(--surface-2)] border-[var(--border)] opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-[var(--text)]">Contact-Ready</span>
+                      {exportPreset === 'Contact-ready' && <Check className="w-3.5 h-3.5 text-[var(--primary)]" />}
+                    </div>
+                    <p className="text-[11px] text-[var(--muted)]">
+                      Excludes suppressed, bounced, unsubscribed, invalid phone, and unknown size.
+                    </p>
+                  </div>
+
+                  <div
+                    onClick={() => setExportPreset('Custom')}
+                    className={`p-3 rounded-[8px] border cursor-pointer transition-all ${
+                      exportPreset === 'Custom'
+                        ? 'bg-[var(--primary)]/10 border-[var(--primary)]'
+                        : 'bg-[var(--surface-2)] border-[var(--border)] opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-[var(--text)]">Complete Raw</span>
+                      {exportPreset === 'Custom' && <Check className="w-3.5 h-3.5 text-[var(--primary)]" />}
+                    </div>
+                    <p className="text-[11px] text-[var(--muted)]">
+                      All leads including needs-check items with explicit do_not_contact flags.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-medium text-[var(--muted)] mb-1.5">
+                  Output Format
+                </label>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer text-[13px]">
+                    <input
+                      type="radio"
+                      name="format"
+                      checked={exportFormat === 'CSV'}
+                      onChange={() => setExportFormat('CSV')}
+                      className="accent-[var(--primary)]"
+                    />
+                    <span>Standard CSV (.csv)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-[13px]">
+                    <input
+                      type="radio"
+                      name="format"
+                      checked={exportFormat === 'XLSX'}
+                      onChange={() => setExportFormat('XLSX')}
+                      className="accent-[var(--primary)]"
+                    />
+                    <span>Excel Spreadsheet (.xlsx)</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Version History Table (Last 10) */}
+              <div className="pt-2 border-t border-[var(--border)]">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[12px] font-semibold text-[var(--text)]">Dataset Version History (Last 10)</span>
+                  <span className="text-[10px] text-[var(--muted)] font-mono">Auto-versioned dataset_vN</span>
+                </div>
+                <div className="max-h-[120px] overflow-y-auto space-y-1.5 pr-1">
+                  {exportHistory.length === 0 ? (
+                    <div className="text-[11px] text-[var(--muted)] text-center py-2">
+                      No previous export versions logged.
+                    </div>
+                  ) : (
+                    exportHistory.map((h) => (
+                      <div
+                        key={h.id}
+                        className="p-2 rounded-[6px] bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between text-[11px]"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-[var(--primary)]">{h.version_name}</span>
+                          <span className="text-[var(--muted)]">({h.preset_used})</span>
+                        </div>
+                        <div className="flex items-center gap-3 font-mono text-[var(--muted)]">
+                          <span>{h.row_count} rows</span>
+                          <span className="uppercase">{h.file_format}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[var(--border)]">
+                <button
+                  type="button"
+                  onClick={() => setShowExportModal(false)}
+                  className="px-3.5 py-2 rounded-[8px] text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={exportLoading}
+                  className="px-4 py-2 rounded-[8px] bg-[var(--primary)] text-white font-medium hover:bg-[var(--primary)]/90 transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>{exportLoading ? 'Exporting...' : `Export ${exportFormat}`}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

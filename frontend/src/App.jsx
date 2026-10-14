@@ -3,22 +3,23 @@ import { motion, AnimatePresence } from 'motion/react';
 import Shell from './components/layout/Shell';
 import TodayPage from './pages/TodayPage';
 import LeadsPage from './pages/LeadsPage';
-import PipelinePage from './pages/PipelinePage';
 import OutreachPage from './pages/OutreachPage';
-import TendersPage from './pages/TendersPage';
-import FlowPage from './pages/FlowPage';
-import HealthPage from './pages/HealthPage';
+import CalendarPage from './pages/CalendarPage';
+import TrackerPage from './pages/TrackerPage';
+import ReportsPage from './pages/ReportsPage';
+import InsightsPage from './pages/InsightsPage';
 import SettingsPage from './pages/SettingsPage';
+import LeadDrawer from './components/leads/LeadDrawer';
 import { useToast } from './context/ToastContext';
 
 const PAGE_TITLES = {
   today: "Today's Outreach Radar",
   leads: 'Industrial Leads Directory',
-  pipeline: 'B2B Sales Pipeline',
   outreach: 'Outreach Workspace & Dispatch',
-  tenders: 'Tenders & RFP Radar',
-  flow: 'Agent Execution Architecture',
-  health: 'Data Health & Verification',
+  calendar: 'Meeting & Follow-up Calendar',
+  tracker: 'B2B Outreach Pipeline & Tracker',
+  reports: 'Weekly Executive Outreach Summary',
+  insights: 'System Flow & Data Health',
   settings: 'System Settings & Compliance'
 };
 
@@ -47,6 +48,8 @@ export default function App() {
   const [selectedOutreachLead, setSelectedOutreachLead] = useState(null);
   const [leadsInitialFilter, setLeadsInitialFilter] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [globalDrawerLeadId, setGlobalDrawerLeadId] = useState(null);
+  const [globalDrawerOpen, setGlobalDrawerOpen] = useState(false);
   const { success, info } = useToast();
 
   const handleOpenLeadOutreach = (lead) => {
@@ -57,6 +60,11 @@ export default function App() {
   const handleNavigateToLeads = (filter = null) => {
     if (filter) setLeadsInitialFilter(filter);
     setActiveTab('leads');
+  };
+
+  const handleOpenLeadDrawer = (leadId) => {
+    setGlobalDrawerLeadId(leadId);
+    setGlobalDrawerOpen(true);
   };
 
   const handleTriggerCrawl = async () => {
@@ -113,31 +121,30 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'pipeline' && (
-            <PipelinePage />
-          )}
-
           {activeTab === 'outreach' && (
             <OutreachPage
               initialLead={selectedOutreachLead}
             />
           )}
 
-          {activeTab === 'tenders' && (
-            <TendersPage />
-          )}
-
-          {activeTab === 'flow' && (
-            <FlowPage />
-          )}
-
-          {activeTab === 'health' && (
-            <HealthPage
-              onOpenFilteredLeads={(filter) => {
-                setLeadsInitialFilter(filter);
-                setActiveTab('leads');
-              }}
+          {activeTab === 'calendar' && (
+            <CalendarPage
+              onOpenLeadDrawer={handleOpenLeadDrawer}
             />
+          )}
+
+          {activeTab === 'tracker' && (
+            <TrackerPage
+              onOpenLeadDrawer={handleOpenLeadDrawer}
+            />
+          )}
+
+          {activeTab === 'reports' && (
+            <ReportsPage />
+          )}
+
+          {activeTab === 'insights' && (
+            <InsightsPage />
           )}
 
           {activeTab === 'settings' && (
@@ -145,6 +152,19 @@ export default function App() {
           )}
         </motion.div>
       </AnimatePresence>
+
+      {/* Global Lead Drawer for Calendar & Tracker */}
+      {globalDrawerLeadId && (
+        <LeadDrawer
+          leadId={globalDrawerLeadId}
+          isOpen={globalDrawerOpen}
+          onClose={() => setGlobalDrawerOpen(false)}
+          onOpenOutreach={(lead) => {
+            setGlobalDrawerOpen(false);
+            handleOpenLeadOutreach(lead);
+          }}
+        />
+      )}
     </Shell>
   );
 }

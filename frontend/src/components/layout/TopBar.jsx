@@ -92,9 +92,22 @@ export default function TopBar({
           <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[var(--primary)]" />
         </button>
 
-        {/* Avatar */}
-        <div className="w-[36px] h-[36px] rounded-[8px] bg-[var(--primary)]/20 border border-[var(--primary)]/40 flex items-center justify-center text-[var(--primary)] font-semibold text-[13px] select-none">
-          SP
+        {/* Active Operator Badge with Role */}
+        <div className="flex items-center gap-2 pl-2 border-l border-[var(--border)] select-none">
+          <div className="w-[34px] h-[34px] rounded-[8px] bg-[var(--primary)]/20 border border-[var(--primary)]/40 flex items-center justify-center text-[var(--primary)] font-bold text-[12px]">
+            ZP
+          </div>
+          <div className="hidden xl:flex flex-col text-left leading-tight">
+            <span className="text-[12px] font-semibold text-[var(--text)]">
+              Zoya Patel
+            </span>
+            <div className="flex items-center gap-1.5 text-[10px] text-[var(--muted)] mt-0.5">
+              <span className="px-1 py-0.2 rounded bg-[var(--primary)]/15 text-[var(--primary)] font-mono font-bold text-[9px] border border-[var(--primary)]/30">
+                ADMIN
+              </span>
+              <span className="font-mono truncate max-w-[120px]">zoya@clickfield.ai</span>
+            </div>
+          </div>
         </div>
       </div>
     </header>

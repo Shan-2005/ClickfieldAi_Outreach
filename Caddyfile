@@ -1,0 +1,12 @@
+# Clickfield Radar Caddy Configuration
+# Option A: LAN Office HTTP Deployment (no domain needed)
+# Access via http://<office-ip> or http://localhost
+:80 {
+    # Reverse proxy to frontend (which proxies /api to backend)
+    reverse_proxy frontend:80
+}
+
+# Option B: Domain with Automatic HTTPS (uncomment and replace domain when deploying publicly)
+# radar.clickfield.ai {
+#     reverse_proxy frontend:80
+# }

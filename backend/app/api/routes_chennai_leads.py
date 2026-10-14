@@ -2,6 +2,7 @@ import csv
 import json
 import os
 import sqlite3
+import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any
 from pydantic import BaseModel
@@ -49,6 +50,8 @@ def get_chennai_leads(
     sector: Optional[str] = "ALL",
     area: Optional[str] = "ALL",
     search: Optional[str] = None,
+    owner: Optional[str] = None,
+    current_user_id: Optional[str] = None,
     has_phone: bool = False,
     has_email: bool = False,
     intel_only: bool = False,
@@ -73,6 +76,15 @@ def get_chennai_leads(
     if area and area != "ALL":
         conditions.append("l.area = ?")
         params.append(area)
+
+    if owner == "unassigned":
+        conditions.append("(l.assigned_user_id IS NULL OR l.assigned_user_id = '')")
+    elif owner == "my_leads" and current_user_id:
+        conditions.append("l.assigned_user_id = ?")
+        params.append(current_user_id)
+    elif owner and owner != "ALL":
+        conditions.append("l.assigned_user_id = ?")
+        params.append(owner)
 
     if search and isinstance(search, str) and search.strip():
         s = f"%{search.strip()}%"
@@ -105,6 +117,7 @@ def get_chennai_leads(
                l.google_maps_url, l.latitude, l.longitude, l.created_at,
                l.employee_range, l.employee_provenance, l.employee_audit_note, l.is_under_50,
                l.owner_name, l.owner_designation, l.owner_provenance,
+               l.assigned_user_id, l.assigned_user_name, l.stage, l.next_due_date, l.is_paused,
                i.status AS intel_status,
                i.approved_at AS intel_approved_at,
                CASE WHEN i.lead_id IS NOT NULL THEN 1 ELSE 0 END AS has_intel
@@ -394,3 +407,88 @@ def update_lead_draft(lead_id: int, payload: UpdateDraftRequest):
         conn.close()
 
     return {"success": True, "intel": intel}
+
+class AssignLeadsRequest(BaseModel):
+    lead_ids: list[int]
+    user_id: str
+    user_name: str
+
+@router.post("/assign")
+def assign_leads(payload: AssignLeadsRequest, requester_role: Optional[str] = "ADMIN", requester_id: Optional[str] = None):
+    """
+    Bulk assigns leads to a team owner.
+    Rule: A lead owned by someone else can be viewed, but only an Admin can reassign.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    updated = []
+    try:
+        for lid in payload.lead_ids:
+            cur.execute("SELECT id, name, assigned_user_id, assigned_user_name FROM chennai_b2b_leads WHERE id = ?", (lid,))
+            row = cur.fetchone()
+            if not row:
+                continue
+
+            existing_owner_id = row["assigned_user_id"]
+            lead_name = row["name"]
+
+            # If already assigned to someone else, only Admin can reassign
+            if existing_owner_id and existing_owner_id != payload.user_id:
+                if requester_role != "ADMIN" and requester_id != existing_owner_id:
+                    conn.close()
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Lead '{lead_name}' is currently owned by {row['assigned_user_name']}. Only an Admin can reassign it."
+                    )
+
+            cur.execute("""
+                UPDATE chennai_b2b_leads 
+                SET assigned_user_id = ?, assigned_user_name = ?
+                WHERE id = ?
+            """, (payload.user_id, payload.user_name, lid))
+            updated.append(lid)
+
+            # Insert into action_log
+            cur.execute("""
+                INSERT INTO action_log (id, lead_id, user_id, user_name, action_type, details, timestamp)
+                VALUES (?, ?, ?, ?, 'ASSIGNED', ?, CURRENT_TIMESTAMP)
+            """, (str(uuid.uuid4()) if 'uuid' in globals() else f"act-{lid}-{int(datetime.now().timestamp())}",
+                  lid, payload.user_id, payload.user_name,
+                  f"Assigned lead to {payload.user_name}"))
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {"status": "success", "assigned_count": len(updated), "lead_ids": updated}
+
+@router.get("/{lead_id}/activity")
+def get_lead_activity(lead_id: int):
+    """Activity feed on each lead showing who did what and when (from action_log)."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, lead_id, user_id, user_name, action_type, details, timestamp
+        FROM action_log
+        WHERE lead_id = ?
+        ORDER BY timestamp DESC
+    """, (lead_id,))
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    if not rows:
+        # Default starter event if none
+        return [{
+            "id": f"init-{lead_id}",
+            "lead_id": lead_id,
+            "user_name": "System Discovery",
+            "action_type": "DISCOVERED",
+            "details": "Lead verified from Google Maps Platform & MCA registry",
+            "timestamp": datetime.utcnow().isoformat()
+        }]
+
+    return rows

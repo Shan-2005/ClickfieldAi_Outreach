@@ -147,3 +147,38 @@ table,
     scroll-behavior: auto !important;
   }
 }
+
+/* Print Stylesheet: Clean white background, no sidebar or top navigation */
+@media print {
+  aside,
+  header,
+  nav,
+  button,
+  .no-print,
+  [aria-label="Notifications"],
+  [aria-label*="Switch to"] {
+    display: none !important;
+  }
+
+  body,
+  main,
+  #root {
+    background-color: #ffffff !important;
+    color: #101828 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    left: 0 !important;
+  }
+
+  main {
+    padding-left: 0 !important;
+    padding-top: 0 !important;
+  }
+
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+}
+

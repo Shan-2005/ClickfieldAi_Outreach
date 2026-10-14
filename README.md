@@ -89,17 +89,69 @@ Dashboard will be accessible at: `http://localhost:5173`.
 
 ---
 
-## 🐳 Docker Compose Deployment
+## 🏢 Office Deployment, Docker & Team Infrastructure
 
-To deploy production-ready with PostgreSQL and pgvector:
+Clickfield Radar provides robust deployment configurations for both single-operator workstations and multi-user office team deployments.
+
+### Deployment Options: Single-User SQLite vs Team PostgreSQL
+- **Single-User Mode (Default)**: Runs on zero-configuration SQLite (`radar.db`). Perfect for individual sales representatives running locally on Windows or macOS.
+- **Team Mode**: Uses PostgreSQL 16 with `pgvector` container. Supports concurrent operators, role-based access control, session authentication, and lead ownership partitioning.
+
+### Docker Compose Architecture
+The production `docker-compose.yml` deploys 4 tightly integrated containers:
+1. `db`: PostgreSQL 16 + pgvector on internal port 5432 with persistent volume `pgdata`.
+2. `backend`: FastAPI application on port 8000 with volume `./backups:/app/backups`.
+3. `frontend`: Optimized Nginx container serving SPA with `/api/` reverse proxy.
+4. `caddy`: Production reverse proxy handling HTTP/HTTPS routing.
 
 ```bash
-docker-compose up --build
+# Start all containers in background
+docker-compose up -d --build
 ```
-This spins up:
-- `db`: PostgreSQL 16 with pgvector extension enabled on port `5432`.
-- `backend`: FastAPI app connected to PostgreSQL on port `8000`.
-- `frontend`: Optimized Nginx container serving the React build on port `5173`.
+
+#### Network Access: LAN HTTP vs Domain HTTPS
+- **Office LAN Deployment (No Domain Needed)**:
+  Access across your office local area network via `http://<office-ip>` or `http://localhost`. Caddy forwards port 80 directly to the frontend.
+- **Public Domain with Automatic HTTPS**:
+  When deploying with a domain (e.g., `radar.clickfield.ai`), uncomment the domain block in [Caddyfile](file:///d:/clickfield-radar/Caddyfile). Caddy automatically provisions and renews Let's Encrypt / ZeroSSL TLS certificates on port 443.
+
+### SQLite to PostgreSQL Migration
+To migrate your existing SQLite leads, intellectual property records, and dispatch queue to PostgreSQL:
+```bash
+# Test schema and inspect tables safely on a temporary copy
+python backend/scripts/migrate_sqlite_to_postgres.py --dry-run
+
+# Run live migration into PostgreSQL
+python backend/scripts/migrate_sqlite_to_postgres.py --sqlite backend/radar.db --pg-url "postgresql://postgres:clickfield_secret_pass@localhost:5432/clickfield_radar"
+```
+
+### Nightly Backups & Restoration Procedure
+- **Automated Scheduler**: APScheduler runs every morning at **02:00 IST** taking database snapshots into `./backups` with a strict **14-day retention policy**.
+- **Manual Backups**:
+  - Windows: Run `powershell -File backend/scripts/backup.ps1`
+  - Linux/Docker: Run `bash backend/scripts/backup.sh`
+- **Database Restoration**:
+  - *PostgreSQL*: `psql $DATABASE_URL < backups/postgres_backup_YYYYMMDD_HHMMSS.sql`
+  - *SQLite*: Copy desired snapshot file from `backups/radar_sqlite_YYYYMMDD_HHMMSS.db` back to `backend/radar.db`.
+
+### 👥 Team Roles & Permissions Matrix
+The platform enforces role-based access control (RBAC) via secure 8-hour HttpOnly session cookies:
+| Capability | Admin (`ADMIN`) | Sales (`SALES`) | Viewer (`VIEWER`) |
+|------------|:---------------:|:---------------:|:-----------------:|
+| View Leads, Calendar & Tenders | ✅ | ✅ | ✅ |
+| Filter & View Own Leads | ✅ | ✅ | ✅ |
+| Run MCA & Company Intelligence | ✅ | ✅ | ❌ Read-only |
+| Export Datasets (CSV & XLSX) | ✅ | ✅ | ❌ Forbidden |
+| Approve & Dispatch Outreach | ✅ | ✅ | ❌ Read-only |
+| Reassign Unassigned / Own Leads | ✅ | ✅ | ❌ Forbidden |
+| Reassign Other Operator's Leads | ✅ (Exclusive) | ❌ Blocked | ❌ Forbidden |
+| Invite Users, Roles & Password Reset | ✅ (Exclusive) | ❌ Blocked | ❌ Forbidden |
+| Edit SMTP / Mailbox Settings | ✅ (Exclusive) | ❌ Blocked | ❌ Forbidden |
+
+### ✉️ Mailbox Configuration & Security
+- **Security Rule**: `MAIL_PASSWORD` lives strictly in `.env`. It is **never** saved in the database, never logged, and never returned by any API endpoint.
+- **Connection Test**: Go to **Settings > Mailbox** and click *"Test Connection"*. The system tests SMTP handshake, authentication, self-test send, IMAP handshake, login, and INBOX read with live pass/fail diagnostics per step.
+- **Outreach Constraints**: Sends plain text only via standard SMTP (zero tracking pixels, zero link shorteners). Compliant with RFC Message-ID, Reply-To, and List-Unsubscribe headers. Sending window strictly enforced for Mon-Sat 09:30-17:30 IST with a random 60-120s dispatch interval.
 
 ---
 

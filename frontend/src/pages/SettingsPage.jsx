@@ -1,13 +1,16 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   User, CheckCircle2, ShieldAlert, Clock, Flame,
-  Cpu, Video, Key, Plus, Trash2, ExternalLink, Check
+  Cpu, Video, Key, Plus, Trash2, ExternalLink, Check,
+  Mail, Users, RefreshCw, X, Shield, Lock, Power, AlertCircle
 } from 'lucide-react';
 import TruthBadge from '../components/common/TruthBadge';
 
 const SETTINGS_SECTIONS = [
   { id: 'profile', label: 'Sender Profile', icon: User, desc: 'Identity and legal physical address for CAN-SPAM / DPDP' },
+  { id: 'mailbox', label: 'Mailbox', icon: Mail, desc: 'SMTP / IMAP credentials, send mode, and diagnostic connection test' },
+  { id: 'team', label: 'Team Accounts', icon: Users, desc: 'User roles, invite teammates, lead ownership and access control' },
   { id: 'proof_points', label: 'Proof Points', icon: CheckCircle2, desc: 'Strict factual claims and verified evidence URLs' },
   { id: 'banned_phrases', label: 'Banned Phrases', icon: ShieldAlert, desc: 'Restricted high-friction expressions barred from drafts' },
   { id: 'sequence_timing', label: 'Sequence Timing', icon: Clock, desc: 'Cadence intervals for Day 0, 4, 9, 16 dispatches' },
@@ -107,6 +110,14 @@ const DEFAULT_SETTINGS = {
     geminiApiKey: '••••••••••••••••••••••••••••••••••••••••',
     googleMapsApiKey: '••••••••••••••••••••••••••••••••••••••••',
     anthropicApiKey: ''
+  },
+  mailbox: {
+    smtpHost: 'smtp.office365.com',
+    smtpPort: 587,
+    imapHost: 'outlook.office365.com',
+    imapPort: 993,
+    username: 'zoya@clickfield.ai',
+    sendMode: 'smtp'
   }
 };
 
@@ -127,6 +138,33 @@ export default function SettingsPage() {
   const [newProofPoint, setNewProofPoint] = useState({ claim: '', evidenceUrl: '', sectors: '' });
   const [showAddProofModal, setShowAddProofModal] = useState(false);
   const saveTimeoutRef = useRef(null);
+
+  // Mailbox test connection state
+  const [mailboxTesting, setMailboxTesting] = useState(false);
+  const [mailboxResults, setMailboxResults] = useState(null);
+
+  // Team management state
+  const [usersList, setUsersList] = useState([]);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ email: '', full_name: '', role: 'SALES' });
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetTargetUser, setResetTargetUser] = useState(null);
+  const [newPassword, setNewPassword] = useState('');
+
+  const fetchTeamUsers = async () => {
+    try {
+      const res = await fetch('/api/auth/users');
+      if (res.ok) {
+        setUsersList(await res.json());
+      }
+    } catch {
+      // fallback
+    }
+  };
+
+  useEffect(() => {
+    fetchTeamUsers();
+  }, []);
 
   // Autosave trigger whenever settings change
   const triggerAutosave = (updated) => {
@@ -1031,9 +1069,483 @@ export default function SettingsPage() {
                 </div>
               </motion.div>
             )}
+
+            {/* 9. MAILBOX SETTINGS */}
+            {activeSection === 'mailbox' && (
+              <motion.div
+                key="mailbox"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-6"
+              >
+                <div>
+                  <h2 className="text-[16px] font-semibold text-[var(--text)]">Mailbox & Delivery</h2>
+                  <p className="text-[13px] text-[var(--muted)] mt-0.5">
+                    Configure SMTP sending, IMAP bounce/reply listener, and delivery mode.
+                  </p>
+                </div>
+
+                {/* Security Notice Banner */}
+                <div className="p-3.5 rounded-[8px] bg-[var(--primary)]/10 border border-[var(--primary)]/30 flex items-start gap-3">
+                  <Shield className="w-4 h-4 text-[var(--primary)] shrink-0 mt-0.5" />
+                  <div className="text-[12px] leading-relaxed text-[var(--text)]">
+                    <span className="font-semibold text-[var(--primary)]">Security Rule: </span>
+                    The mailbox password lives only in <code className="px-1.5 py-0.5 rounded bg-[var(--surface-2)] font-mono text-[11px] text-[var(--primary)]">.env (MAIL_PASSWORD)</code>.
+                    It is never stored in the database, never logged, and never returned by the API.
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[12px] font-medium text-[var(--muted)] mb-1.5">
+                      SMTP Host
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.mailbox.smtpHost}
+                      onChange={(e) => {
+                        const updated = { ...settings, mailbox: { ...settings.mailbox, smtpHost: e.target.value } };
+                        triggerAutosave(updated);
+                      }}
+                      className="w-full h-[36px] px-3 bg-[var(--surface-2)] border border-[var(--border)] rounded-[8px] text-[13px] text-[var(--text)] font-mono focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[12px] font-medium text-[var(--muted)] mb-1.5">
+                      SMTP Port (TLS)
+                    </label>
+                    <input
+                      type="number"
+                      value={settings.mailbox.smtpPort}
+                      onChange={(e) => {
+                        const updated = { ...settings, mailbox: { ...settings.mailbox, smtpPort: parseInt(e.target.value, 10) || 587 } };
+                        triggerAutosave(updated);
+                      }}
+                      className="w-full h-[36px] px-3 bg-[var(--surface-2)] border border-[var(--border)] rounded-[8px] text-[13px] text-[var(--text)] font-mono focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[12px] font-medium text-[var(--muted)] mb-1.5">
+                      IMAP Host (INBOX & Bounces)
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.mailbox.imapHost}
+                      onChange={(e) => {
+                        const updated = { ...settings, mailbox: { ...settings.mailbox, imapHost: e.target.value } };
+                        triggerAutosave(updated);
+                      }}
+                      className="w-full h-[36px] px-3 bg-[var(--surface-2)] border border-[var(--border)] rounded-[8px] text-[13px] text-[var(--text)] font-mono focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[12px] font-medium text-[var(--muted)] mb-1.5">
+                      IMAP Port (SSL)
+                    </label>
+                    <input
+                      type="number"
+                      value={settings.mailbox.imapPort}
+                      onChange={(e) => {
+                        const updated = { ...settings, mailbox: { ...settings.mailbox, imapPort: parseInt(e.target.value, 10) || 993 } };
+                        triggerAutosave(updated);
+                      }}
+                      className="w-full h-[36px] px-3 bg-[var(--surface-2)] border border-[var(--border)] rounded-[8px] text-[13px] text-[var(--text)] font-mono focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-[12px] font-medium text-[var(--muted)] mb-1.5">
+                      Username / Sender Mailbox
+                    </label>
+                    <input
+                      type="email"
+                      value={settings.mailbox.username}
+                      onChange={(e) => {
+                        const updated = { ...settings, mailbox: { ...settings.mailbox, username: e.target.value } };
+                        triggerAutosave(updated);
+                      }}
+                      className="w-full h-[36px] px-3 bg-[var(--surface-2)] border border-[var(--border)] rounded-[8px] text-[13px] text-[var(--text)] font-mono focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
+                    />
+                  </div>
+
+                  {/* Send Mode Selection */}
+                  <div className="md:col-span-2 pt-2 border-t border-[var(--border)]">
+                    <label className="block text-[12px] font-medium text-[var(--muted)] mb-2">
+                      Send Mode
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div
+                        onClick={() => {
+                          const updated = { ...settings, mailbox: { ...settings.mailbox, sendMode: 'smtp' } };
+                          triggerAutosave(updated);
+                        }}
+                        className={`p-3 rounded-[8px] border cursor-pointer transition-all ${
+                          settings.mailbox.sendMode === 'smtp'
+                            ? 'bg-[var(--primary)]/10 border-[var(--primary)]'
+                            : 'bg-[var(--surface-2)] border-[var(--border)] opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[13px] font-semibold text-[var(--text)]">SMTP Automated</span>
+                          {settings.mailbox.sendMode === 'smtp' && <Check className="w-4 h-4 text-[var(--primary)]" />}
+                        </div>
+                        <p className="text-[11px] text-[var(--muted)]">
+                          Dispatches plain text emails via SMTP directly. Queue persists in DB and sends Mon-Sat 09:30-17:30 IST.
+                        </p>
+                      </div>
+
+                      <div
+                        onClick={() => {
+                          const updated = { ...settings, mailbox: { ...settings.mailbox, sendMode: 'manual' } };
+                          triggerAutosave(updated);
+                        }}
+                        className={`p-3 rounded-[8px] border cursor-pointer transition-all ${
+                          settings.mailbox.sendMode === 'manual'
+                            ? 'bg-[var(--primary)]/10 border-[var(--primary)]'
+                            : 'bg-[var(--surface-2)] border-[var(--border)] opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[13px] font-semibold text-[var(--text)]">Manual Outlook Mailto</span>
+                          {settings.mailbox.sendMode === 'manual' && <Check className="w-4 h-4 text-[var(--primary)]" />}
+                        </div>
+                        <p className="text-[11px] text-[var(--muted)]">
+                          Preserves Outlook web client mailto launcher and operator "I sent it" confirmation button.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Test Connection Button & Step-by-Step Diagnostic Results */}
+                <div className="pt-4 border-t border-[var(--border)] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-[13px] font-semibold text-[var(--text)]">Diagnostic Self-Test</h4>
+                      <p className="text-[11px] text-[var(--muted)]">
+                        Tests SMTP handshake, auth, sends a test mail to own address, and tests IMAP INBOX read.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={mailboxTesting}
+                      onClick={async () => {
+                        setMailboxTesting(true);
+                        setMailboxResults(null);
+                        try {
+                          const res = await fetch('/api/mailbox/test-connection', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              smtp_host: settings.mailbox.smtpHost,
+                              smtp_port: settings.mailbox.smtpPort,
+                              imap_host: settings.mailbox.imapHost,
+                              imap_port: settings.mailbox.imapPort,
+                              username: settings.mailbox.username
+                            })
+                          });
+                          if (res.ok) {
+                            setMailboxResults(await res.json());
+                          }
+                        } catch {
+                          // ignore
+                        } finally {
+                          setMailboxTesting(false);
+                        }
+                      }}
+                      className="h-[36px] px-4 rounded-[8px] bg-[var(--primary)] text-white text-[12px] font-medium flex items-center gap-2 hover:bg-[var(--primary)]/90 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {mailboxTesting && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                      <span>{mailboxTesting ? 'Testing Connection...' : 'Test Connection'}</span>
+                    </button>
+                  </div>
+
+                  {mailboxResults && (
+                    <div className="p-4 rounded-[8px] bg-[var(--surface-2)] border border-[var(--border)] space-y-2.5">
+                      <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+                        <span className="text-[12px] font-semibold text-[var(--text)]">Diagnostic Results</span>
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${mailboxResults.overall ? 'bg-[var(--success)]/20 text-[var(--success)]' : 'bg-[var(--warn)]/20 text-[var(--warn)]'}`}>
+                          {mailboxResults.overall ? 'ALL STEPS PASSED' : 'CONFIG REQUIRED'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[12px]">
+                        {[
+                          { label: '1. SMTP Handshake', res: mailboxResults.smtp_handshake },
+                          { label: '2. SMTP Auth', res: mailboxResults.smtp_auth },
+                          { label: '3. SMTP Test Send', res: mailboxResults.smtp_test_send },
+                          { label: '4. IMAP Handshake', res: mailboxResults.imap_handshake },
+                          { label: '5. IMAP Auth', res: mailboxResults.imap_auth },
+                          { label: '6. IMAP Read INBOX', res: mailboxResults.imap_read_inbox }
+                        ].map((step, idx) => (
+                          <div key={idx} className="p-2 rounded bg-[var(--surface)] border border-[var(--border)] flex items-start gap-2">
+                            {step.res?.pass ? (
+                              <CheckCircle2 className="w-4 h-4 text-[var(--success)] shrink-0 mt-0.5" />
+                            ) : (
+                              <AlertCircle className="w-4 h-4 text-[var(--warn)] shrink-0 mt-0.5" />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium text-[var(--text)]">{step.label}</div>
+                              <div className="text-[10px] text-[var(--muted)] truncate">{step.res?.detail || (step.res?.pass ? 'Pass' : 'Pending')}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+
+            {/* 10. TEAM ACCOUNTS */}
+            {activeSection === 'team' && (
+              <motion.div
+                key="team"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-6"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-[16px] font-semibold text-[var(--text)]">Team Accounts & Roles</h2>
+                    <p className="text-[13px] text-[var(--muted)] mt-0.5">
+                      Manage operator roles, lead ownership partitioning, and user access.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowInviteModal(true)}
+                    className="h-[36px] px-3.5 rounded-[8px] bg-[var(--primary)] text-white text-[12px] font-medium flex items-center gap-1.5 hover:bg-[var(--primary)]/90 transition-all cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Invite Teammate</span>
+                  </button>
+                </div>
+
+                <div className="space-y-2.5">
+                  {(usersList.length > 0 ? usersList : [
+                    { id: 'usr-zoya-1', email: 'zoya@clickfield.ai', full_name: 'Zoya Patel', role: 'ADMIN', is_active: true },
+                    { id: 'usr-rohit-2', email: 'rohit@clickfield.ai', full_name: 'Rohit Sharma', role: 'SALES', is_active: true },
+                    { id: 'usr-viewer-3', email: 'viewer@clickfield.ai', full_name: 'Executive Viewer', role: 'VIEWER', is_active: true }
+                  ]).map((u) => {
+                    let roleBadge = 'bg-[var(--primary)]/15 text-[var(--primary)] border-[var(--primary)]/30';
+                    if (u.role === 'SALES') roleBadge = 'bg-[var(--success)]/15 text-[var(--success)] border-[var(--success)]/30';
+                    if (u.role === 'VIEWER') roleBadge = 'bg-[var(--muted)]/15 text-[var(--muted)] border-[var(--border)]';
+
+                    return (
+                      <div
+                        key={u.id}
+                        className="p-3.5 rounded-[10px] bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between gap-4"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-[var(--primary)]/15 text-[var(--primary)] font-bold text-[12px] flex items-center justify-center">
+                            {u.full_name?.slice(0, 2).toUpperCase() || 'US'}
+                          </div>
+                          <div>
+                            <div className="text-[13px] font-semibold text-[var(--text)] flex items-center gap-2">
+                              <span>{u.full_name}</span>
+                              <span className={`px-2 py-0.2 rounded text-[10px] font-mono font-bold uppercase border ${roleBadge}`}>
+                                {u.role}
+                              </span>
+                              {!u.is_active && (
+                                <span className="px-1.5 py-0.2 rounded text-[10px] bg-[var(--danger)]/15 text-[var(--danger)]">
+                                  INACTIVE
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-[var(--muted)] font-mono">{u.email}</div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setResetTargetUser(u);
+                              setNewPassword('');
+                              setShowResetModal(true);
+                            }}
+                            className="h-[30px] px-2.5 rounded-[6px] bg-[var(--surface)] hover:bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+                          >
+                            <Lock className="w-3 h-3 text-[var(--muted)]" />
+                            <span>Reset PW</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Invite Teammate Modal */}
+      {showInviteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-[420px] bg-[var(--surface)] border border-[var(--border)] rounded-[12px] p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+              <h3 className="text-[16px] font-semibold text-[var(--text)]">Invite Teammate</h3>
+              <button
+                type="button"
+                onClick={() => setShowInviteModal(false)}
+                className="p-1 rounded text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  const res = await fetch('/api/auth/users/invite', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(inviteForm)
+                  });
+                  if (res.ok) {
+                    setShowInviteModal(false);
+                    fetchTeamUsers();
+                  }
+                } catch {
+                  // ignore
+                }
+              }}
+              className="space-y-3.5 text-[13px]"
+            >
+              <div>
+                <label className="block text-[12px] font-medium text-[var(--muted)] mb-1">Full Name</label>
+                <input
+                  type="text"
+                  value={inviteForm.full_name}
+                  onChange={(e) => setInviteForm({ ...inviteForm, full_name: e.target.value })}
+                  placeholder="e.g. S. Karthik"
+                  className="w-full h-[36px] px-3 rounded-[8px] bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-medium text-[var(--muted)] mb-1">Corporate Email</label>
+                <input
+                  type="email"
+                  value={inviteForm.email}
+                  onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                  placeholder="karthik@clickfield.ai"
+                  className="w-full h-[36px] px-3 rounded-[8px] bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] outline-none font-mono"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-medium text-[var(--muted)] mb-1">Role & Permissions</label>
+                <select
+                  value={inviteForm.role}
+                  onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
+                  className="w-full h-[36px] px-3 rounded-[8px] bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] outline-none cursor-pointer"
+                >
+                  <option value="SALES">Sales (Outreach, edit own leads, export)</option>
+                  <option value="ADMIN">Admin (Full system access, reassign anyone)</option>
+                  <option value="VIEWER">Viewer (Read-only, no export)</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[var(--border)]">
+                <button
+                  type="button"
+                  onClick={() => setShowInviteModal(false)}
+                  className="px-3.5 py-2 rounded-[8px] text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-[8px] bg-[var(--primary)] text-white font-medium hover:bg-[var(--primary)]/90 cursor-pointer"
+                >
+                  Create User
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Password Modal */}
+      {showResetModal && resetTargetUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-[380px] bg-[var(--surface)] border border-[var(--border)] rounded-[12px] p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+              <h3 className="text-[16px] font-semibold text-[var(--text)]">Reset Password</h3>
+              <button
+                type="button"
+                onClick={() => setShowResetModal(false)}
+                className="p-1 rounded text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-[12px] text-[var(--muted)]">
+              Set a new password for <span className="text-[var(--text)] font-semibold">{resetTargetUser.full_name}</span> ({resetTargetUser.email}).
+            </p>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  const res = await fetch(`/api/auth/users/${resetTargetUser.id}/reset-password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ new_password: newPassword })
+                  });
+                  if (res.ok) {
+                    setShowResetModal(false);
+                  }
+                } catch {
+                  // ignore
+                }
+              }}
+              className="space-y-3.5 text-[13px]"
+            >
+              <div>
+                <label className="block text-[12px] font-medium text-[var(--muted)] mb-1">New Password</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Min 8 characters..."
+                  className="w-full h-[36px] px-3 rounded-[8px] bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] outline-none font-mono"
+                  required
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[var(--border)]">
+                <button
+                  type="button"
+                  onClick={() => setShowResetModal(false)}
+                  className="px-3.5 py-2 rounded-[8px] text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-[8px] bg-[var(--primary)] text-white font-medium hover:bg-[var(--primary)]/90 cursor-pointer"
+                >
+                  Set Password
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

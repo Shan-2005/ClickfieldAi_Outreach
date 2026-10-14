@@ -2,18 +2,19 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Calendar, Users, Kanban, Mail, FileText, Activity,
-  Database, Settings, ChevronLeft, ChevronRight, Radar
+  Database, Settings, ChevronLeft, ChevronRight, Radar,
+  CalendarDays, BarChart3, Sparkles
 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { id: 'today', label: 'Today', icon: Calendar, shortcut: 'g t' },
   { id: 'leads', label: 'Leads', icon: Users, shortcut: 'g l' },
-  { id: 'pipeline', label: 'Pipeline', icon: Kanban },
   { id: 'outreach', label: 'Outreach', icon: Mail, shortcut: 'g o' },
-  { id: 'tenders', label: 'Tenders', icon: FileText },
-  { id: 'flow', label: 'Flow', icon: Activity },
-  { id: 'health', label: 'Data Health', icon: Database },
-  { id: 'settings', label: 'Settings', icon: Settings }
+  { id: 'calendar', label: 'Calendar', icon: CalendarDays, shortcut: 'g c' },
+  { id: 'tracker', label: 'Tracker', icon: Kanban, shortcut: 'g k' },
+  { id: 'reports', label: 'Reports', icon: BarChart3, shortcut: 'g r' },
+  { id: 'insights', label: 'Insights', icon: Sparkles, shortcut: 'g i' },
+  { id: 'settings', label: 'Settings', icon: Settings, shortcut: 'g s' }
 ];
 
 export default function Sidebar({

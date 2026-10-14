@@ -202,3 +202,94 @@ class AgentHealthMetric(Base):
     last_error_message = Column(Text, nullable=True)
     avg_latency_ms = Column(Integer, default=0)
     updated_at = Column(DateTime, default=datetime.utcnow)
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    hashed_password = Column(String(255), nullable=False)
+    full_name = Column(String(255), nullable=False)
+    role = Column(String(50), default="SALES", index=True) # ADMIN, SALES, VIEWER
+    is_active = Column(Boolean, default=True)
+    ics_token = Column(String(64), unique=True, default=gen_uuid, index=True)
+    sender_signature = Column(Text, nullable=True)
+    sender_address = Column(Text, nullable=True)
+    mailbox_username = Column(String(255), nullable=True)
+    daily_send_cap = Column(Integer, default=15)
+    daily_sends_today = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
+    meetings = relationship("Meeting", back_populates="owner", cascade="all, delete-orphan")
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    session_id = Column(String(64), primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="sessions")
+
+class Meeting(Base):
+    __tablename__ = "meetings"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    lead_id = Column(Integer, nullable=False, index=True) # References chennai_b2b_leads.id
+    lead_name = Column(String(255), nullable=True)
+    owner_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String(300), nullable=False)
+    start_time = Column(DateTime, nullable=False, index=True)
+    end_time = Column(DateTime, nullable=False)
+    location_or_link = Column(String(500), nullable=True)
+    notes = Column(Text, nullable=True)
+    reminder_1d_sent = Column(Boolean, default=False)
+    reminder_1h_sent = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    owner = relationship("User", back_populates="meetings")
+
+class ActionLog(Base):
+    __tablename__ = "action_log"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    lead_id = Column(Integer, nullable=True, index=True)
+    user_id = Column(String(36), nullable=True, index=True)
+    user_name = Column(String(255), nullable=True)
+    action_type = Column(String(100), nullable=False, index=True) # ASSIGNED, RESCHEDULED, STAGE_CHANGED, EXPORTED, APPROVED, SENT, REPLY_CLASSIFIED, MEETING_CREATED, BACKUP_COMPLETED
+    details = Column(Text, nullable=True)
+    metadata_json = Column(JSON, default=dict)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+
+class EmailReply(Base):
+    __tablename__ = "email_replies"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    lead_id = Column(Integer, nullable=True, index=True)
+    message_id = Column(String(255), nullable=True, index=True)
+    in_reply_to = Column(String(255), nullable=True, index=True)
+    from_email = Column(String(255), nullable=False, index=True)
+    subject = Column(String(300), nullable=False)
+    snippet_300 = Column(String(300), nullable=False) # Strict: exactly first 300 characters
+    classification = Column(String(50), nullable=False, index=True) # BOUNCED, UNSUBSCRIBED, INTERESTED, REPLIED, AUTO_REPLY
+    user_feedback = Column(String(20), default="UNREVIEWED") # CORRECT, WRONG, UNREVIEWED
+    received_at = Column(DateTime, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class DatasetExport(Base):
+    __tablename__ = "dataset_exports"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    version_name = Column(String(50), nullable=False, index=True) # e.g. dataset_v1
+    filters_json = Column(JSON, default=dict)
+    row_count = Column(Integer, default=0)
+    file_format = Column(String(10), default="CSV") # CSV, XLSX
+    preset_used = Column(String(50), default="Custom") # Contact-ready, Custom
+    file_path = Column(Text, nullable=True)
+    created_by_user_id = Column(String(36), nullable=True)
+    created_by_user_name = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+

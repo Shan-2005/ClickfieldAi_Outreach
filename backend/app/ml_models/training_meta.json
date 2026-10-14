@@ -1,0 +1,21 @@
+{
+  "trained_at": "2026-10-14T14:25:32.472393",
+  "total_training_records": 48,
+  "intents": [
+    "DISPATCH_ALL_EMAILS",
+    "STRATEGY_QA",
+    "EXPORT_CSV",
+    "GET_DAILY_EMAILS",
+    "RUN_SWARM",
+    "GENERATE_DAILY_EMAILS",
+    "SEARCH_LEADS",
+    "REWRITE_EMAIL"
+  ],
+  "models": [
+    "sector_classifier.joblib",
+    "sector_vectorizer.joblib",
+    "conversion_fit_model.joblib",
+    "intent_vectorizer.joblib",
+    "intent_classifier.joblib"
+  ]
+}

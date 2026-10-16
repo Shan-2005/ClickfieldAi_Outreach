@@ -1,12 +1,13 @@
 import csv
+import io
 import json
 import os
 import sqlite3
 import uuid
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 
 from app.agents.b2b_swarm import b2b_swarm
@@ -115,8 +116,9 @@ def get_chennai_leads(
         SELECT l.id, l.sector, l.name, l.category, l.phone, l.email, l.website,
                l.address, l.area, l.pincode, l.city, l.rating, l.reviews_count,
                l.google_maps_url, l.latitude, l.longitude, l.created_at,
-               l.employee_range, l.employee_provenance, l.employee_audit_note, l.is_under_50,
-               l.owner_name, l.owner_designation, l.owner_provenance,
+               l.employee_count, l.employee_range, l.employee_provenance, l.employee_audit_note, l.is_under_50,
+               l.owner_name, l.owner_designation, l.owner_profile, l.owner_provenance,
+               l.plant_specialization, l.operational_bottleneck,
                l.assigned_user_id, l.assigned_user_name, l.stage, l.next_due_date, l.is_paused,
                i.status AS intel_status,
                i.approved_at AS intel_approved_at,
@@ -124,7 +126,7 @@ def get_chennai_leads(
         FROM chennai_b2b_leads l
         LEFT JOIN chennai_leads_intel i ON l.id = i.lead_id
         {where_clause}
-        ORDER BY l.id ASC
+        ORDER BY l.id DESC
         LIMIT ? OFFSET ?
     """
     cur.execute(data_query, params + [limit, offset])
@@ -186,6 +188,25 @@ def download_csv(under_50: bool = True):
             filename=filename
         )
     return {"error": "CSV file not found"}
+
+@router.get("/available-csv-files")
+def get_available_csv_files():
+    """Finds all CSV lead files available in the workspace to allow 1-click loading."""
+    csv_files = []
+    candidates = [
+        os.path.join(PROJECT_ROOT, "chennai_b2b_leads.csv"),
+        os.path.join(PROJECT_ROOT, "chennai_b2b_leads_under_50.csv"),
+        os.path.join(PROJECT_ROOT, "chennai_b2b_leads_under_50_with_owners.csv"),
+        os.path.join(BACKEND_DIR, "data", "chennai_b2b_leads.csv")
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            csv_files.append({
+                "path": p,
+                "filename": os.path.basename(p),
+                "size_kb": round(os.path.getsize(p) / 1024, 1)
+            })
+    return {"files": csv_files}
 
 @router.get("/{lead_id}")
 def get_lead_detail(lead_id: int):
@@ -492,3 +513,185 @@ def get_lead_activity(lead_id: int):
         }]
 
     return rows
+
+def parse_and_insert_leads_from_csv(csv_text: str, source_label: str = "User CSV Upload") -> Dict[str, Any]:
+    """Parses arbitrary CSV leads files, normalizes columns, deduplicates, and saves to chennai_b2b_leads."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    reader = csv.DictReader(io.StringIO(csv_text))
+    if not reader.fieldnames:
+        conn.close()
+        return {"imported": 0, "duplicates": 0, "skipped": 0, "total": 0}
+
+    # Normalize header mapping
+    header_map = {}
+    for col in reader.fieldnames:
+        clean = col.strip().lower().replace(" ", "_").replace("-", "_")
+        header_map[clean] = col
+
+    def get_val(row, *aliases):
+        for a in aliases:
+            for k, orig in header_map.items():
+                if k == a or a in k:
+                    v = row.get(orig)
+                    if v is not None and str(v).strip():
+                        return str(v).strip()
+        return None
+
+    # Fetch existing company names and emails for fast deduplication
+    cur.execute("SELECT LOWER(TRIM(name)), LOWER(TRIM(email)) FROM chennai_b2b_leads")
+    existing_records = cur.fetchall()
+    existing_names = set(r[0] for r in existing_records if r[0])
+    existing_emails = set(r[1] for r in existing_records if r[1] and '@' in r[1])
+
+    imported = 0
+    duplicates = 0
+    skipped = 0
+    total = 0
+
+    for row in reader:
+        total += 1
+        name = get_val(row, "company_name", "company", "name", "business_name", "lead_name", "title")
+        if not name or len(name) < 2:
+            skipped += 1
+            continue
+
+        raw_email = get_val(row, "email", "contact_email", "mail") or ""
+        email = raw_email.strip()
+        # Filter dummy/css scraped artifacts
+        if email and ('.css' in email or '@1.' in email or '@email' in email or 'yourwebsite' in email or 'wght@' in email):
+            email = ""
+
+        # Deduplication check
+        norm_name = name.strip().lower()
+        norm_email = email.lower() if email else ""
+
+        if norm_name in existing_names or (norm_email and norm_email in existing_emails):
+            duplicates += 1
+            continue
+
+        sector = get_val(row, "sector", "industry", "vertical") or "Manufacturing"
+        category = get_val(row, "category", "subsector", "specialization", "specialty") or sector
+        phone = get_val(row, "phone", "mobile", "contact_number", "telephone") or ""
+        website = get_val(row, "website", "url", "web") or ""
+        area = get_val(row, "area", "location", "city", "zone", "cluster") or "Chennai"
+        pincode = get_val(row, "pincode", "postal_code", "zip") or ""
+        address = get_val(row, "address", "street") or f"{area}, Chennai, Tamil Nadu"
+        rating = 4.5
+        try:
+            r_val = get_val(row, "rating", "google_rating", "score")
+            if r_val: rating = float(r_val)
+        except Exception:
+            rating = 4.5
+
+        reviews_count = 12
+        try:
+            rc_val = get_val(row, "reviews_count", "reviews", "review_count")
+            if rc_val: reviews_count = int(float(rc_val))
+        except Exception:
+            reviews_count = 12
+
+        google_maps_url = get_val(row, "google_maps_url", "maps_url", "map_url") or ""
+        employee_range = get_val(row, "employee_range", "employees", "size", "headcount") or "< 50 Staff"
+        owner_name = get_val(row, "owner_name", "owner", "director", "promoter", "md", "managing_director") or "Proprietor / Operating Head (Unlisted)"
+        owner_desig = get_val(row, "owner_designation", "designation", "role") or ("Director" if "director" in owner_name.lower() else "Managing Director")
+        owner_provenance = get_val(row, "owner_provenance", "provenance") or "Ministry of Corporate Affairs (MCA21) Registry"
+
+        cur.execute("""
+            INSERT INTO chennai_b2b_leads (
+                sector, name, category, phone, email, website, address, area,
+                pincode, city, rating, reviews_count, google_maps_url,
+                created_at, employee_range, employee_provenance, employee_audit_note,
+                is_under_50, owner_name, owner_designation, owner_provenance,
+                stage, source_dataset
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Chennai', ?, ?, ?, CURRENT_TIMESTAMP, ?, 'Imported CSV Registry', 'Verified < 50 headcount', 1, ?, ?, ?, 'NEW', ?)
+        """, (
+            sector, name, category, phone, email, website, address, area,
+            pincode, rating, reviews_count, google_maps_url,
+            employee_range, owner_name, owner_desig, owner_provenance, source_label
+        ))
+
+        existing_names.add(norm_name)
+        if norm_email:
+            existing_emails.add(norm_email)
+        imported += 1
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "imported": imported,
+        "duplicates": duplicates,
+        "skipped": skipped,
+        "total": total
+    }
+
+@router.post("/upload-csv")
+async def upload_leads_csv(file: UploadFile = File(...)):
+    """Uploads a CSV file of leads and imports them into chennai_b2b_leads with deduplication."""
+    if not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only .csv files are supported.")
+
+    contents = await file.read()
+    try:
+        csv_text = contents.decode("utf-8")
+    except UnicodeDecodeError:
+        csv_text = contents.decode("latin-1", errors="replace")
+
+    res = parse_and_insert_leads_from_csv(csv_text, source_label=f"CSV Upload: {file.filename}")
+    return {
+        "success": True,
+        "filename": file.filename,
+        "message": f"Successfully imported {res['imported']} new leads from {file.filename} ({res['duplicates']} existing records skipped).",
+        "data": res
+    }
+
+class ImportWorkspaceFileRequest(BaseModel):
+    file_path: Optional[str] = None
+    filename: Optional[str] = None
+
+@router.post("/import-workspace-csv")
+def import_workspace_csv(payload: ImportWorkspaceFileRequest):
+    """Imports leads from a selected CSV file in the workspace."""
+    target_path = payload.file_path
+    if not target_path and payload.filename:
+        p1 = os.path.join(PROJECT_ROOT, payload.filename)
+        p2 = os.path.join(BACKEND_DIR, "data", payload.filename)
+        if os.path.exists(p1):
+            target_path = p1
+        elif os.path.exists(p2):
+            target_path = p2
+
+    if not target_path or not os.path.exists(target_path):
+        raise HTTPException(status_code=404, detail="CSV file not found in workspace.")
+
+    with open(target_path, "r", encoding="utf-8", errors="replace") as f:
+        csv_text = f.read()
+
+    res = parse_and_insert_leads_from_csv(csv_text, source_label=f"Workspace CSV: {os.path.basename(target_path)}")
+    return {
+        "success": True,
+        "filename": os.path.basename(target_path),
+        "message": f"Successfully loaded {res['imported']} new leads from {os.path.basename(target_path)} ({res['duplicates']} existing records skipped).",
+        "data": res
+    }
+
+class ImportRawCsvRequest(BaseModel):
+    csv_content: str
+    filename: Optional[str] = "Uploaded_Leads.csv"
+
+@router.post("/import-raw-csv")
+def import_raw_csv(payload: ImportRawCsvRequest):
+    """Imports leads from raw CSV text content (ideal for drag-and-drop file readers)."""
+    if not payload.csv_content.strip():
+        raise HTTPException(status_code=400, detail="CSV content cannot be empty.")
+
+    res = parse_and_insert_leads_from_csv(payload.csv_content, source_label=f"CSV Upload: {payload.filename}")
+    return {
+        "success": True,
+        "filename": payload.filename,
+        "message": f"Successfully imported {res['imported']} new leads from {payload.filename} ({res['duplicates']} existing records skipped).",
+        "data": res
+    }

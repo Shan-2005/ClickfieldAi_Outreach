@@ -79,6 +79,7 @@ async def test_connection(payload: ConnectionTestRequest):
     )
     return res
 
+@router.get("/health")
 @router.get("/system-status")
 async def get_system_health():
     """
@@ -113,5 +114,6 @@ async def get_system_health():
             "send_mode": settings.SEND_MODE,
             "username": settings.MAIL_USERNAME
         },
-        "last_backup": last_backup_info
+        "last_backup": last_backup_info,
+        "backup": last_backup_info
     }

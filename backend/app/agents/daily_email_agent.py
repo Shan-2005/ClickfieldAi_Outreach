@@ -93,12 +93,7 @@ class DailyEmailOutreachAgent:
             cta = f"Would you be open to a 2-minute video showing how this runs for {first_clean_name}? If yes, just reply 'Yes' and I'll send it over."
             angle = "Automated CAD Quoting & Milestone Dispatch"
 
-        ai_automation_msg = (
-            "Or your Company might be thought of some Ai automation to be done in your Day-to-day work , "
-            "involving from employee management and client acquisition report management or Ticketing Management.\n"
-            "and We provide you the solutions ."
-        )
-        body = f"{salutation}\n\n{obs}\n\n{gap}\n\n{sol}\n\n{ai_automation_msg}\n\n{cta}\n\nBest,\nClickfield Team"
+        body = f"{salutation}\n\n{obs}\n\n{gap}\n\n{sol}\n\n{cta}\n\nBest,\nClickfield Team"
         word_count = len(body.split())
 
         research_context = {
@@ -147,7 +142,7 @@ class DailyEmailOutreachAgent:
         conn.commit()
         conn.close()
 
-    def get_or_generate_todays_batch(self, force_refresh: bool = False, target_count: int = 15) -> List[Dict[str, Any]]:
+    def get_or_generate_todays_batch(self, force_refresh: bool = False, target_count: int = 15, offset: int = 0) -> List[Dict[str, Any]]:
         self.ensure_table()
         today_str = datetime.now().strftime("%Y-%m-%d")
 
@@ -155,7 +150,7 @@ class DailyEmailOutreachAgent:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
 
-        if not force_refresh:
+        if not force_refresh and offset == 0:
             cur.execute("""
                 SELECT * FROM daily_email_dispatches 
                 WHERE batch_date = ? 
@@ -172,7 +167,7 @@ class DailyEmailOutreachAgent:
                 conn.close()
                 return existing
 
-        # If force refresh or no batch for today, find 15 eligible leads
+        # If force refresh or offset requested, select next eligible leads
         # Must have valid email, is_under_50 = 1, not junk placeholder
         # Exclude leads already sent in previous batches
         cur.execute("""
@@ -194,13 +189,13 @@ class DailyEmailOutreachAgent:
               CASE WHEN l.owner_name IS NOT NULL AND l.owner_name != 'Not Disclosed Online' THEN 0 ELSE 1 END,
               l.rating DESC,
               l.id ASC
-            LIMIT ?
-        """, (target_count,))
+            LIMIT ? OFFSET ?
+        """, (target_count, max(0, offset)))
 
         eligible_leads = [dict(r) for r in cur.fetchall()]
 
-        # If force refresh, delete today's unsent batch first
-        if force_refresh:
+        # If force refresh on today's batch without offset, clear unsent drafts
+        if force_refresh and offset == 0:
             cur.execute("DELETE FROM daily_email_dispatches WHERE batch_date = ? AND status != 'SENT'", (today_str,))
             conn.commit()
 
@@ -208,7 +203,7 @@ class DailyEmailOutreachAgent:
 
         generated_batch = []
         for idx, lead in enumerate(eligible_leads, 1):
-            email_info = outreach_ml.generate_full_sequence(lead, index_seed=idx)
+            email_info = outreach_ml.generate_full_sequence(lead, index_seed=offset + idx)
             cur.execute("""
                 INSERT INTO daily_email_dispatches (
                     lead_id, batch_date, batch_index, company_name, recipient_email,
@@ -219,7 +214,7 @@ class DailyEmailOutreachAgent:
             """, (
                 lead["id"],
                 today_str,
-                idx,
+                offset + idx,
                 lead["name"],
                 lead["email"],
                 email_info["recipient_name"],
@@ -238,7 +233,7 @@ class DailyEmailOutreachAgent:
             email_info["id"] = inserted_id
             email_info["lead_id"] = lead["id"]
             email_info["batch_date"] = today_str
-            email_info["batch_index"] = idx
+            email_info["batch_index"] = offset + idx
             email_info["company_name"] = lead["name"]
             email_info["recipient_email"] = lead["email"]
             email_info["sector"] = lead.get("sector")
@@ -261,6 +256,24 @@ class DailyEmailOutreachAgent:
             WHERE id = ?
         """, (status, now_str if status == "SENT" else None, dispatch_id))
         rows = cur.rowcount
+
+        # Automatically advance lead in CRM & schedule Day 3 follow-up in Calendar
+        if status == "SENT" and rows > 0:
+            cur.execute("SELECT lead_id FROM daily_email_dispatches WHERE id = ?", (dispatch_id,))
+            row = cur.fetchone()
+            if row and row[0]:
+                lead_id = row[0]
+                from datetime import timedelta
+                next_due = (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d")
+                cur.execute("""
+                    UPDATE chennai_b2b_leads 
+                    SET stage = 'contacted',
+                        sequence_step = 1,
+                        last_contacted_at = ?,
+                        next_due_date = ?
+                    WHERE id = ?
+                """, (now_str, next_due, lead_id))
+
         conn.commit()
         conn.close()
         return rows > 0
@@ -276,6 +289,17 @@ class DailyEmailOutreachAgent:
             SET status = 'SENT', sent_at = ?
             WHERE batch_date = ? AND status = 'READY'
         """, (now_str, today_str))
+        count = cur.rowcount
+        conn.commit()
+        conn.close()
+        return count
+
+    def reset_todays_batch(self) -> int:
+        """Resets all SENT or DISPATCHED emails back to READY so user can test sending again."""
+        self.ensure_table()
+        conn = sqlite3.connect(self.db_path)
+        cur = conn.cursor()
+        cur.execute("UPDATE daily_email_dispatches SET status = 'READY', sent_at = NULL")
         count = cur.rowcount
         conn.commit()
         conn.close()
@@ -320,7 +344,7 @@ if __name__ == "__main__":
     batch = daily_email_agent.get_or_generate_todays_batch(force_refresh=True, target_count=15)
     print(f"Successfully generated {len(batch)} emails for today's batch.")
     
-    target_msg = "Or your Company might be thought of some Ai automation"
+    target_msg = "Your Company might be thought of some Ai automation"
     for item in batch:
         assert target_msg in item["body"], f"Missing AI automation message in email for {item.get('company_name')}"
         print(f"\n[Email #{item.get('batch_index', '?')}] {item.get('company_name')} -> {item.get('recipient_email')}")

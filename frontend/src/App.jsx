@@ -10,6 +10,7 @@ import ReportsPage from './pages/ReportsPage';
 import InsightsPage from './pages/InsightsPage';
 import SettingsPage from './pages/SettingsPage';
 import LeadDrawer from './components/leads/LeadDrawer';
+import ErrorBoundary from './components/common/ErrorBoundary';
 import { useToast } from './context/ToastContext';
 
 const PAGE_TITLES = {
@@ -52,6 +53,13 @@ export default function App() {
   const [globalDrawerOpen, setGlobalDrawerOpen] = useState(false);
   const { success, info } = useToast();
 
+  const handleSelectTab = (tab) => {
+    if (tab === 'outreach') {
+      setSelectedOutreachLead(null);
+    }
+    setActiveTab(tab);
+  };
+
   const handleOpenLeadOutreach = (lead) => {
     setSelectedOutreachLead(lead);
     setActiveTab('outreach');
@@ -70,7 +78,7 @@ export default function App() {
   const handleTriggerCrawl = async () => {
     info('Triggering autonomous discovery crawler across industrial portals...');
     try {
-      const res = await fetch('/api/agents/crawl', {
+      const res = await fetch('/api/agents/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ trigger_source: 'command_palette' })
@@ -89,7 +97,7 @@ export default function App() {
   return (
     <Shell
       activeTab={activeTab}
-      onSelectTab={setActiveTab}
+      onSelectTab={handleSelectTab}
       pageTitle={PAGE_TITLES[activeTab] || 'Clickfield AI'}
       searchQuery={searchQuery}
       onSearchChange={setSearchQuery}
@@ -122,9 +130,11 @@ export default function App() {
           )}
 
           {activeTab === 'outreach' && (
-            <OutreachPage
-              initialLead={selectedOutreachLead}
-            />
+            <ErrorBoundary>
+              <OutreachPage
+                initialLead={selectedOutreachLead}
+              />
+            </ErrorBoundary>
           )}
 
           {activeTab === 'calendar' && (

@@ -658,7 +658,45 @@ class RadarLLMBrain:
             print(f"Gemini API query error: {e}")
         return None
 
+    def _query_local_ollama(self, prompt: str) -> Optional[str]:
+        """Queries local Ollama Llama 3.2 daemon for autonomous reasoning."""
+        try:
+            url = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/") + "/api/generate"
+            model = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+            payload = {
+                "model": model,
+                "prompt": f"You are Clickfield Radar Copilot, an expert assistant for Chennai B2B industrial SMBs (<50 staff). Answer factually and directly in 2-3 sentences:\n\n{prompt}",
+                "stream": False,
+                "options": {"temperature": 0.3, "num_predict": 300}
+            }
+            resp = httpx.post(url, json=payload, timeout=25.0)
+            if resp.status_code == 200:
+                return resp.json().get("response", "").strip()
+        except Exception as e:
+            print(f"Ollama query error in RadarLLMBrain: {e}")
+        return None
+
     def _handle_general_query(self, raw_prompt: str, cmd: str) -> Dict[str, Any]:
+        # 1. Try local Ollama Llama 3.2 first
+        ollama_ans = self._query_local_ollama(raw_prompt)
+        if ollama_ans:
+            return {
+                "action": "GENERAL_QA",
+                "success": True,
+                "message": ollama_ans,
+                "intent_detected": "LOCAL_OLLAMA_BRAIN"
+            }
+
+        # 2. Try Gemini API fallback
+        gemini_ans = self._query_gemini_api(raw_prompt)
+        if gemini_ans:
+            return {
+                "action": "GENERAL_QA",
+                "success": True,
+                "message": gemini_ans,
+                "intent_detected": "GEMINI_API"
+            }
+
         stats = self.get_db_stats()
         msg = (
             f"### Clickfield Radar Assistant\n\n"

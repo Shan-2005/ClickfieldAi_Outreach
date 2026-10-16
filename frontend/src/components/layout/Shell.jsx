@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { Bot } from 'lucide-react';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import CommandPalette from '../common/CommandPalette';
+import RadarAssistantModal from '../RadarAssistantModal';
 
 export default function Shell({
   activeTab,
@@ -14,6 +16,7 @@ export default function Shell({
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
 
   // Auto-collapse sidebar below 1100px as required
   useEffect(() => {
@@ -29,12 +32,19 @@ export default function Shell({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Global key navigation (g t, g l, g o, Esc)
+  // Global key navigation (g t, g l, g o, ⌘J for Assistant)
   useEffect(() => {
     let pendingG = false;
     let gTimeout = null;
 
     const handleKeyDown = (e) => {
+      // ⌘J or Ctrl+J to toggle AI Assistant
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'j' || e.key === 'J')) {
+        e.preventDefault();
+        setAssistantOpen((prev) => !prev);
+        return;
+      }
+
       const activeEl = document.activeElement;
       const isInput =
         activeEl?.tagName === 'INPUT' ||
@@ -93,6 +103,7 @@ export default function Shell({
         onOpenCommandPalette={() => setCmdOpen(true)}
         searchQuery={searchQuery}
         onSearchChange={onSearchChange}
+        onTriggerCrawl={onTriggerCrawl}
       />
 
       {/* Command Palette */}
@@ -113,6 +124,32 @@ export default function Shell({
           {children}
         </div>
       </main>
+
+      {/* Floating Radar Assistant Copilot Button */}
+      <button
+        type="button"
+        onClick={() => setAssistantOpen(true)}
+        className="fixed bottom-6 right-6 z-40 h-[44px] px-4 rounded-[999px] bg-[var(--primary)] text-white shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center gap-2.5 font-medium text-[13px] border border-white/15 cursor-pointer"
+        title="Open AI Radar Assistant (⌘J)"
+      >
+        <span className="relative flex h-2.5 w-2.5">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+        </span>
+        <Bot className="w-4 h-4" />
+        <span>Radar Copilot</span>
+        <kbd className="text-[10px] font-mono bg-white/20 px-1.5 py-0.5 rounded ml-1">⌘J</kbd>
+      </button>
+
+      {/* Assistant Modal */}
+      <RadarAssistantModal
+        isOpen={assistantOpen}
+        onClose={() => setAssistantOpen(false)}
+        onNavigateToOutreach={(lead) => {
+          setAssistantOpen(false);
+          onSelectTab('outreach');
+        }}
+      />
     </div>
   );
 }

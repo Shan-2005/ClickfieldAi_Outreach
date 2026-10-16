@@ -24,14 +24,15 @@ class UpdateDraftRequest(BaseModel):
 class GenerateBatchRequest(BaseModel):
     force_refresh: bool = False
     target_count: int = 15
+    offset: Optional[int] = 0
 
 @router.get("/today")
-def get_todays_batch():
+def get_todays_batch(offset: int = 0):
     """
     Returns today's 15 personalized B2B outreach emails, including
     Day 0, Day 2, Day 3, and Day 5 sequences and real-time stats.
     """
-    batch = daily_email_agent.get_or_generate_todays_batch(force_refresh=False, target_count=15)
+    batch = daily_email_agent.get_or_generate_todays_batch(force_refresh=False, target_count=15, offset=offset)
     
     today_str = datetime.now().strftime("%Y-%m-%d")
     conn = sqlite3.connect(DB_PATH)
@@ -63,17 +64,32 @@ def get_todays_batch():
 @router.post("/generate-batch")
 def regenerate_batch(payload: Optional[GenerateBatchRequest] = None):
     """
-    Forces generation of a fresh 15-email batch for today.
+    Forces generation of a fresh 15-email batch for today, with optional offset for advancing leads.
     """
     force = payload.force_refresh if payload else True
     target = payload.target_count if payload else 15
+    offset = payload.offset if (payload and payload.offset is not None) else 0
     batch = daily_email_agent.get_or_generate_todays_batch(
         force_refresh=force,
-        target_count=target
+        target_count=target,
+        offset=offset
     )
     return {
         "success": True,
-        "message": f"Generated {len(batch)} personalized outreach emails for today",
+        "message": f"Generated {len(batch)} personalized outreach emails for today (Offset: {offset})",
+        "items": batch
+    }
+
+@router.post("/reset-queue")
+def reset_queue():
+    """
+    Resets the dispatched/sent status of today's emails back to READY, allowing testing and re-dispatch.
+    """
+    count = daily_email_agent.reset_todays_batch()
+    batch = daily_email_agent.get_or_generate_todays_batch(force_refresh=False)
+    return {
+        "success": True,
+        "message": f"Reset {count} emails back to Ready status.",
         "items": batch
     }
 

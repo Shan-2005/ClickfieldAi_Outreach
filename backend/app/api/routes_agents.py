@@ -15,6 +15,7 @@ async def _bg_run_pipeline():
         await orchestrator_agent.run_pipeline(session, max_items_per_source=4)
 
 @router.post("/run")
+@router.post("/crawl")
 async def trigger_agent_run(background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     """Trigger an immediate crawling, extraction, and ranking pipeline run."""
     background_tasks.add_task(_bg_run_pipeline)

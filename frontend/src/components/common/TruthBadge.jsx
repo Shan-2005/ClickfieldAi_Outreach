@@ -78,12 +78,13 @@ export default function TruthBadge({
       <button
         type="button"
         onClick={() => hasPopoverData && setShowPopover((prev) => !prev)}
-        className={`inline-flex items-center font-medium rounded-[999px] transition-colors select-none ${config.badgeClass} ${sizeClasses} ${className} ${
+        title={displayLabel}
+        className={`inline-flex items-center max-w-full font-medium rounded-[999px] transition-colors select-none ${config.badgeClass} ${sizeClasses} ${className} ${
           hasPopoverData ? 'cursor-pointer hover:brightness-110' : 'cursor-default'
         }`}
       >
-        {config.icon}
-        <span className="tabular-nums whitespace-nowrap">{displayLabel}</span>
+        <span className="shrink-0">{config.icon}</span>
+        <span className="tabular-nums truncate">{displayLabel}</span>
       </button>
 
       {/* Popover on hover/click */}

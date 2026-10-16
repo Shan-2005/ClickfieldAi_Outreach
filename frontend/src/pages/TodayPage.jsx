@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Calendar, CheckCircle2, Clock, MessageSquare, AlertTriangle,
-  ArrowRight, Users, Mail, Phone, ExternalLink, RefreshCw
+  ArrowRight, Users, Mail, Phone, ExternalLink, RefreshCw,
+  RotateCcw, Sparkles
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts';
 import NumberTicker from '../components/common/NumberTicker';
@@ -29,6 +30,43 @@ export default function TodayPage({ onOpenLeadOutreach, onNavigateToLeads }) {
       setError(err.message || 'Failed to connect to backend server');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const [batchLoading, setBatchLoading] = useState(false);
+
+  const handleQueueNextBatch = async () => {
+    setBatchLoading(true);
+    try {
+      const currentCount = data?.items?.length || 0;
+      const res = await fetch('/api/daily-emails/generate-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force_refresh: true, target_count: 15, offset: currentCount })
+      });
+      if (res.ok) {
+        await fetchTodayData();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
+  const handleResetQueue = async () => {
+    setBatchLoading(true);
+    try {
+      const res = await fetch('/api/daily-emails/reset-queue', {
+        method: 'POST'
+      });
+      if (res.ok) {
+        await fetchTodayData();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setBatchLoading(false);
     }
   };
 
@@ -270,6 +308,35 @@ export default function TodayPage({ onOpenLeadOutreach, onNavigateToLeads }) {
                   Clear filter
                 </button>
               )}
+
+              {/* Reset to Ready button */}
+              <button
+                type="button"
+                disabled={batchLoading}
+                onClick={handleResetQueue}
+                className="px-2 py-1 rounded-[6px] bg-[var(--surface-2)] hover:bg-[var(--surface-2)]/80 border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                title="Reset sent emails back to Ready status for testing"
+              >
+                <RotateCcw className={`w-3 h-3 ${batchLoading ? 'animate-spin' : ''}`} />
+                <span>Reset Status</span>
+              </button>
+
+              {/* Queue Next 15 Leads button */}
+              <button
+                type="button"
+                disabled={batchLoading}
+                onClick={handleQueueNextBatch}
+                className="px-2.5 py-1 rounded-[6px] bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white text-[11px] font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                title="Queue next 15 uncontacted Chennai SMB leads"
+              >
+                {batchLoading ? (
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3 h-3" />
+                )}
+                <span>Queue Next 15</span>
+              </button>
+
               <button
                 type="button"
                 onClick={fetchTodayData}

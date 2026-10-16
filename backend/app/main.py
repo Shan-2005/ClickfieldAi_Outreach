@@ -19,6 +19,9 @@ from app.api.routes_tracker import router as tracker_router
 from app.api.routes_datasets import router as datasets_router
 from app.api.routes_reports import router as reports_router
 from app.api.routes_mailbox import router as mailbox_router
+from app.api.routes_agentic import router as agentic_router
+from app.api.routes_outreach_datasets import router as outreach_studio_router
+from app.services.dataset_service import import_excel_datasets
 from app.services.scheduler import start_background_scheduler
 
 # Configure logging
@@ -33,6 +36,12 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing ClickfieldAI Opportunity Radar...")
     await init_db()
     
+    # Auto-initialize and import Excel datasets
+    try:
+        import_excel_datasets(force=False)
+    except Exception as e:
+        logger.warning(f"Dataset initialization warning: {e}")
+
     # Start APScheduler (09:00 IST follow-ups, 02:00 IST backups, 10-min IMAP tracking)
     try:
         start_background_scheduler()
@@ -60,6 +69,7 @@ app.add_middleware(
 app.include_router(opportunities_router, prefix=settings.API_V1_STR)
 app.include_router(agents_router, prefix=settings.API_V1_STR)
 app.include_router(outreach_router, prefix=settings.API_V1_STR)
+app.include_router(outreach_studio_router, prefix=settings.API_V1_STR)
 app.include_router(compliance_router, prefix=settings.API_V1_STR)
 app.include_router(chennai_leads_router, prefix=settings.API_V1_STR)
 app.include_router(daily_emails_router, prefix=settings.API_V1_STR)
@@ -70,6 +80,7 @@ app.include_router(tracker_router, prefix=settings.API_V1_STR)
 app.include_router(datasets_router, prefix=settings.API_V1_STR)
 app.include_router(reports_router, prefix=settings.API_V1_STR)
 app.include_router(mailbox_router, prefix=settings.API_V1_STR)
+app.include_router(agentic_router)
 
 @app.get("/health")
 async def health_check():

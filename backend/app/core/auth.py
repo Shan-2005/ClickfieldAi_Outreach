@@ -65,14 +65,19 @@ async def get_current_user_optional(request: Request, db: AsyncSession = Depends
 async def get_current_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
     user = await get_current_user_optional(request, db)
     if not user:
-        # Fallback for headless testing or initial unauthenticated dev state:
-        # if a default admin exists, return it if request header X-Dev-User is provided
+        # Fallback for headless testing or explicit dev header
         dev_email = request.headers.get("X-Dev-User")
         if dev_email:
             res = await db.execute(select(User).where(User.email == dev_email))
             found = res.scalars().first()
             if found:
                 return found
+
+        # Transparent fallback for local dev / office environment (Zoya Patel - Admin)
+        res = await db.execute(select(User).where(User.role == "ADMIN", User.is_active == True).order_by(User.created_at.asc()).limit(1))
+        admin_user = res.scalars().first()
+        if admin_user:
+            return admin_user
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

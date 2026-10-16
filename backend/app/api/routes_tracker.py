@@ -92,6 +92,7 @@ async def get_tracker_kanban(owner_filter: Optional[str] = None):
     return grouped
 
 @router.patch("/stage")
+@router.post("/stage")
 async def update_lead_stage(payload: StageUpdateRequest, current_user: Optional[User] = Depends(get_current_user_optional), db: AsyncSession = Depends(get_db)):
     """Updates a lead's stage and records the event in the audit trail action_log."""
     db_path = "radar.db" if os.path.exists("radar.db") else "backend/radar.db"
@@ -133,33 +134,33 @@ async def get_tracker_metrics():
     Reply rate is displayed ONLY after 30 sends; otherwise 'Not enough data'.
     """
     db_path = "radar.db" if os.path.exists("radar.db") else "backend/radar.db"
-    sent_count = 16
+    sent_count = 0
     bounced_count = 0
-    replies_count = 2
-    interested_count = 1
+    replies_count = 0
+    interested_count = 0
     unsub_count = 0
 
     if os.path.exists(db_path):
         conn = sqlite3.connect(db_path)
         cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM daily_email_dispatches WHERE status = 'SENT'")
-        sent_count = cur.fetchone()[0] or 16
+        cur.execute("SELECT COUNT(*) FROM daily_email_dispatches WHERE status IN ('SENT', 'DISPATCHED')")
+        sent_count = cur.fetchone()[0] or 0
 
         cur.execute("SELECT COUNT(*) FROM email_replies WHERE classification = 'BOUNCED'")
-        bounced_count = cur.fetchone()[0]
+        bounced_count = cur.fetchone()[0] or 0
 
         cur.execute("SELECT COUNT(*) FROM email_replies WHERE classification IN ('REPLIED', 'INTERESTED')")
-        replies_count = cur.fetchone()[0] or 2
+        replies_count = cur.fetchone()[0] or 0
 
         cur.execute("SELECT COUNT(*) FROM email_replies WHERE classification = 'INTERESTED'")
-        interested_count = cur.fetchone()[0] or 1
+        interested_count = cur.fetchone()[0] or 0
 
         cur.execute("SELECT COUNT(*) FROM email_replies WHERE classification = 'UNSUBSCRIBED'")
-        unsub_count = cur.fetchone()[0]
+        unsub_count = cur.fetchone()[0] or 0
         conn.close()
 
     # Reply rate condition: shown only after 30 sends
-    if sent_count >= 30:
+    if sent_count >= 30 and sent_count > 0:
         reply_rate_str = f"{round((replies_count / sent_count) * 100, 1)}%"
     else:
         reply_rate_str = "Not enough data"
@@ -177,38 +178,13 @@ async def get_tracker_metrics():
 
 @router.get("/replies")
 async def get_replies_list(db: AsyncSession = Depends(get_db)):
-    """Returns incoming replies with strict 300-char snippet, classification, and feedback status."""
+    """Returns authentic incoming replies from database."""
     stmt = select(EmailReply).order_by(EmailReply.received_at.desc()).limit(50)
     res = await db.execute(stmt)
     replies = res.scalars().all()
 
-    # If table is empty, provide initial realistic Chennai B2B test replies
     if not replies:
-        sample_replies = [
-            {
-                "id": "rep-demo-1",
-                "lead_id": 1201,
-                "lead_name": "Sai Engineering",
-                "from_email": "md@saienggindia.com",
-                "subject": "Re: idea on Sai Engineering RFQ and job-card flow",
-                "snippet_300": "Yes, please send over the 2-minute video breakdown. We run 12 CNC lines in Guindy and tracking live cycle times is our main friction point right now.",
-                "classification": "INTERESTED",
-                "user_feedback": "CORRECT",
-                "received_at": (datetime.utcnow() - timedelta(hours=2)).isoformat()
-            },
-            {
-                "id": "rep-demo-2",
-                "lead_id": 1204,
-                "lead_name": "Reethika Precision",
-                "from_email": "info@reethikaprecision.com",
-                "subject": "Re: Reethika Precision Engineering engineering enquiry",
-                "snippet_300": "What would be the setup timeline for our Ambattur workshop? Are you able to integrate with Tally Prime or legacy ERPs without replacing hardware?",
-                "classification": "REPLIED",
-                "user_feedback": "UNREVIEWED",
-                "received_at": (datetime.utcnow() - timedelta(hours=5)).isoformat()
-            }
-        ]
-        return sample_replies
+        return []
 
     return [
         {

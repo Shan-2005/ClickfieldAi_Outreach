@@ -4,10 +4,14 @@ import {
   Users, Search, Filter, Mail, Phone, MessageSquare,
   Check, X, Eye, Bookmark, Send, Table as TableIcon,
   LayoutGrid, ArrowUpDown, ChevronDown, Download, UserCheck,
-  FileSpreadsheet, Sparkles, Building2, FileText
+  FileSpreadsheet, Sparkles, Building2, FileText, UploadCloud
 } from 'lucide-react';
 import TruthBadge from '../components/common/TruthBadge';
 import LeadDrawer from '../components/leads/LeadDrawer';
+import DirectDispatchModal from '../components/leads/DirectDispatchModal';
+import OllamaDatasetScraperModal from '../components/leads/OllamaDatasetScraperModal';
+import LeadIntelligenceModal from '../components/leads/LeadIntelligenceModal';
+import CsvImportModal from '../components/leads/CsvImportModal';
 import { SkeletonTable } from '../components/common/Skeleton';
 import EmptyState from '../components/common/EmptyState';
 import ErrorState from '../components/common/ErrorState';
@@ -65,6 +69,12 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
   const [selectedLeadSummary, setSelectedLeadSummary] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
+
+  // Ollama Dataset Scraper, Direct Dispatch & Intelligence Modal state
+  const [showScraperModal, setShowScraperModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [directDispatchLead, setDirectDispatchLead] = useState(null);
+  const [intelModalLeadId, setIntelModalLeadId] = useState(null);
 
   const { success, error, info } = useToast();
 
@@ -270,9 +280,28 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
           </div>
         </div>
 
-        {/* Right: Export Dataset Button */}
+        {/* Right: AI Dataset Scraper & Export Dataset Buttons */}
         {sourceTab === 'leads' && (
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowScraperModal(true)}
+              className="h-[34px] px-3.5 rounded-[8px] bg-[var(--primary)] text-white text-[12px] font-semibold flex items-center gap-1.5 hover:bg-[var(--primary)]/90 transition-all cursor-pointer shadow-xs"
+              title="Launch Ollama autonomous MSME cluster dataset scraper"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>AI Dataset Scraper (Ollama)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowImportModal(true)}
+              className="h-[34px] px-3.5 rounded-[8px] bg-[var(--surface-2)] hover:bg-[var(--surface-2)]/80 border border-[var(--border)] text-[var(--text)] text-[12px] font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <UploadCloud className="w-4 h-4 text-[var(--primary)]" />
+              <span>Import Dataset (CSV)</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setShowExportModal(true)}
@@ -515,10 +544,10 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
         /* TABLE VIEW (56px row height, hover actions, truth badges) */
         <div className="w-full rounded-[12px] bg-[var(--surface)] border border-[var(--border)] overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-[12px] select-none">
+            <table className="w-full border-collapse text-left text-[12px] select-none min-w-[1100px]">
               <thead>
                 <tr className="h-[44px] border-b border-[var(--border)] bg-[var(--surface-2)]/50 text-[var(--muted)] font-medium text-[11px] uppercase tracking-wider">
-                  <th className="w-10 px-4 text-center">
+                  <th className="w-[44px] px-4 text-center">
                     <input
                       type="checkbox"
                       checked={selectedIds.size > 0 && selectedIds.size === filteredLeads.length}
@@ -527,14 +556,14 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
                       aria-label="Select all leads"
                     />
                   </th>
-                  <th className="px-4 py-2">Company</th>
-                  <th className="px-4 py-2">Sector</th>
-                  <th className="px-4 py-2">Size</th>
-                  <th className="px-4 py-2">Owner / Director</th>
-                  <th className="px-4 py-2">Contact</th>
-                  <th className="px-4 py-2">Fit Score</th>
-                  <th className="px-4 py-2">Stage</th>
-                  <th className="px-4 py-2">Actions</th>
+                  <th className="w-[240px] min-w-[220px] px-4 py-2">Company</th>
+                  <th className="w-[120px] px-4 py-2">Sector</th>
+                  <th className="w-[110px] px-4 py-2">Size</th>
+                  <th className="w-[180px] max-w-[180px] px-4 py-2">Owner / Director</th>
+                  <th className="w-[100px] px-4 py-2">Contact</th>
+                  <th className="w-[120px] px-4 py-2">Fit Score</th>
+                  <th className="w-[100px] px-4 py-2">Stage</th>
+                  <th className="w-[110px] px-4 py-2">Actions</th>
                 </tr>
               </thead>
 
@@ -567,7 +596,7 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
                       }`}
                     >
                       {/* Checkbox */}
-                      <td className="w-10 px-4 text-center" onClick={(e) => toggleSelectRow(lead.id, e)}>
+                      <td className="w-[44px] px-4 text-center" onClick={(e) => toggleSelectRow(lead.id, e)}>
                         <input
                           type="checkbox"
                           checked={isChecked}
@@ -578,8 +607,8 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
                       </td>
 
                       {/* Company (Name + Area) */}
-                      <td className="px-4 py-2 min-w-[200px] max-w-[240px]">
-                        <div className="font-medium text-[13px] text-[var(--text)] group-hover:text-[var(--primary)] transition-colors truncate">
+                      <td className="px-4 py-2 w-[240px] min-w-[220px] max-w-[260px]">
+                        <div className="font-medium text-[13px] text-[var(--text)] group-hover:text-[var(--primary)] transition-colors truncate" title={lead.name}>
                           {lead.name}
                         </div>
                         <div className="text-[11px] text-[var(--muted)] truncate">
@@ -588,14 +617,14 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
                       </td>
 
                       {/* Sector */}
-                      <td className="px-4 py-2 whitespace-nowrap">
+                      <td className="px-4 py-2 w-[120px] whitespace-nowrap">
                         <span className="text-[11px] font-medium px-2 py-0.5 rounded-[999px] bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)]">
                           {lead.sector || 'Manufacturing'}
                         </span>
                       </td>
 
                       {/* Size (Badge) */}
-                      <td className="px-4 py-2 whitespace-nowrap">
+                      <td className="px-4 py-2 w-[110px] whitespace-nowrap">
                         <TruthBadge
                           type={sizeBadgeType}
                           label={lead.employee_range || '< 50 Staff'}
@@ -603,21 +632,24 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
                         />
                       </td>
 
-                      {/* Owner (Badge) */}
-                      <td className="px-4 py-2 whitespace-nowrap max-w-[160px]">
-                        {hasOwner ? (
-                          <TruthBadge
-                            type="verified"
-                            label={lead.owner_name}
-                            details={lead.owner_provenance || 'MCA / Zauba verified stakeholder'}
-                          />
-                        ) : (
-                          <TruthBadge type="unknown" label="Unlisted" />
-                        )}
+                      {/* Owner (Badge) - with strict width and truncation */}
+                      <td className="px-4 py-2 w-[180px] max-w-[180px] overflow-hidden whitespace-nowrap">
+                        <div className="max-w-[170px] truncate">
+                          {hasOwner ? (
+                            <TruthBadge
+                              type="verified"
+                              label={lead.owner_name}
+                              details={lead.owner_provenance || 'MCA / Zauba verified stakeholder'}
+                              className="max-w-full"
+                            />
+                          ) : (
+                            <TruthBadge type="unknown" label="Unlisted" />
+                          )}
+                        </div>
                       </td>
 
                       {/* Contact Icons (Email / Phone / WhatsApp) */}
-                      <td className="px-4 py-2 whitespace-nowrap">
+                      <td className="px-4 py-2 w-[100px] whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <span
                             title={hasEmail ? `Email: ${lead.email}` : 'No verified email'}
@@ -641,7 +673,7 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
                       </td>
 
                       {/* Fit (0-100 bar with tooltip breakdown) */}
-                      <td className="px-4 py-2 whitespace-nowrap">
+                      <td className="px-4 py-2 w-[120px] whitespace-nowrap">
                         <div
                           className="flex items-center gap-2 group/fit relative"
                           title={`Fit: ${fitScore}/100 (Sector: 40pts, Size: 30pts, Contactability: 30pts)`}
@@ -659,37 +691,37 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
                       </td>
 
                       {/* Stage */}
-                      <td className="px-4 py-2 whitespace-nowrap">
+                      <td className="px-4 py-2 w-[100px] whitespace-nowrap">
                         <span className="text-[11px] font-mono px-2 py-0.5 rounded-[999px] bg-[var(--surface-2)] text-[var(--muted)] border border-[var(--border)]">
                           {lead.intel_status || 'NEW'}
                         </span>
                       </td>
 
-                      {/* Row Hover Actions: Save / Open / Draft */}
-                      <td className="px-4 py-2 whitespace-nowrap">
+                      {/* Row Hover Actions: Inspect Facts / Direct Dispatch (Ollama) / Outreach */}
+                      <td className="px-4 py-2 w-[110px] whitespace-nowrap">
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              success(`Saved ${lead.name} to bookmarks`);
+                              setIntelModalLeadId(lead.id);
                             }}
                             className="p-1.5 rounded-[6px] hover:bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
-                            title="Save lead"
+                            title="Inspect Full Company Intelligence & Facts"
                           >
-                            <Bookmark className="w-3.5 h-3.5" />
+                            <Eye className="w-3.5 h-3.5 text-[var(--primary)]" />
                           </button>
 
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleRowClick(lead);
+                              setDirectDispatchLead(lead);
                             }}
-                            className="p-1.5 rounded-[6px] hover:bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
-                            title="Open drawer"
+                            className="p-1.5 rounded-[6px] hover:bg-[var(--primary)]/15 text-[var(--primary)] transition-colors cursor-pointer"
+                            title="1-Click Cold Email & Dispatch (Ollama)"
                           >
-                            <Eye className="w-3.5 h-3.5" />
+                            <Mail className="w-3.5 h-3.5" />
                           </button>
 
                           <button
@@ -698,8 +730,8 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
                               e.stopPropagation();
                               onOpenOutreach?.(lead);
                             }}
-                            className="p-1.5 rounded-[6px] hover:bg-[var(--primary)]/15 text-[var(--primary)] transition-colors cursor-pointer"
-                            title="Draft outreach"
+                            className="p-1.5 rounded-[6px] hover:bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+                            title="Open Outreach Page"
                           >
                             <Send className="w-3.5 h-3.5" />
                           </button>
@@ -745,12 +777,30 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
                   {hasOwner && <TruthBadge type="verified" label={lead.owner_name} />}
                 </div>
 
-                <div className="flex items-center justify-between pt-1 text-[11px] text-[var(--muted)]">
-                  <div className="flex items-center gap-2">
-                    <span className={hasEmail ? 'text-[var(--primary)]' : 'opacity-30'}><Mail className="w-3.5 h-3.5" /></span>
-                    <span className={hasPhone ? 'text-[var(--success)]' : 'opacity-30'}><Phone className="w-3.5 h-3.5" /></span>
-                  </div>
-                  <span className="font-semibold text-[var(--text)] tabular-nums">★ {lead.rating || '4.5'}</span>
+                <div className="flex items-center justify-between pt-2 border-t border-[var(--border)] text-[11px]">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIntelModalLeadId(lead.id);
+                    }}
+                    className="px-2 py-1 rounded-[6px] bg-[var(--surface-2)] text-[var(--text)] hover:text-[var(--primary)] flex items-center gap-1 font-medium transition-colors"
+                  >
+                    <Eye className="w-3.5 h-3.5 text-[var(--primary)]" />
+                    <span>Facts</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDirectDispatchLead(lead);
+                    }}
+                    className="px-2.5 py-1 rounded-[6px] bg-[var(--primary)] text-white text-[11px] font-semibold flex items-center gap-1 hover:bg-[var(--primary)]/90 transition-colors shadow-2xs"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    <span>Dispatch (Ollama)</span>
+                  </button>
                 </div>
               </div>
             );
@@ -797,7 +847,7 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
                 <label className="block text-[12px] font-medium text-[var(--muted)] mb-1.5">
                   Preset Profile
                 </label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div
                     onClick={() => setExportPreset('Contact-ready')}
                     className={`p-3 rounded-[8px] border cursor-pointer transition-all ${
@@ -807,11 +857,28 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="font-semibold text-[var(--text)]">Contact-Ready</span>
+                      <span className="font-semibold text-[var(--text)] text-[12px]">Contact-Ready</span>
                       {exportPreset === 'Contact-ready' && <Check className="w-3.5 h-3.5 text-[var(--primary)]" />}
                     </div>
-                    <p className="text-[11px] text-[var(--muted)]">
+                    <p className="text-[10px] text-[var(--muted)] leading-tight">
                       Excludes suppressed, bounced, unsubscribed, invalid phone, and unknown size.
+                    </p>
+                  </div>
+
+                  <div
+                    onClick={() => setExportPreset('Provenance-audit')}
+                    className={`p-3 rounded-[8px] border cursor-pointer transition-all ${
+                      exportPreset === 'Provenance-audit'
+                        ? 'bg-[var(--success)]/10 border-[var(--success)]'
+                        : 'bg-[var(--surface-2)] border-[var(--border)] opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-[var(--text)] text-[12px]">Provenance Audit</span>
+                      {exportPreset === 'Provenance-audit' && <Check className="w-3.5 h-3.5 text-[var(--success)]" />}
+                    </div>
+                    <p className="text-[10px] text-[var(--muted)] leading-tight">
+                      Includes statutory source registries, MCA DIN audit, and zero-hallucination certifications.
                     </p>
                   </div>
 
@@ -824,10 +891,10 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="font-semibold text-[var(--text)]">Complete Raw</span>
+                      <span className="font-semibold text-[var(--text)] text-[12px]">Complete Raw</span>
                       {exportPreset === 'Custom' && <Check className="w-3.5 h-3.5 text-[var(--primary)]" />}
                     </div>
-                    <p className="text-[11px] text-[var(--muted)]">
+                    <p className="text-[10px] text-[var(--muted)] leading-tight">
                       All leads including needs-check items with explicit do_not_contact flags.
                     </p>
                   </div>
@@ -914,6 +981,35 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
           </div>
         </div>
       )}
+
+      {/* Interactive AI Dataset Scraper (Ollama) Modal */}
+      <OllamaDatasetScraperModal
+        isOpen={showScraperModal}
+        onClose={() => setShowScraperModal(false)}
+        onScrapeComplete={() => fetchLeads()}
+      />
+
+      {/* CSV Dataset Import Modal */}
+      <CsvImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImportComplete={() => fetchLeads()}
+      />
+
+      {/* Direct Email Dispatch Modal (1-Click Ollama synthesis & dispatch) */}
+      <DirectDispatchModal
+        isOpen={Boolean(directDispatchLead)}
+        onClose={() => setDirectDispatchLead(null)}
+        lead={directDispatchLead}
+        onDispatched={() => fetchLeads()}
+      />
+
+      {/* Full Company Intelligence & Facts Modal */}
+      <LeadIntelligenceModal
+        isOpen={Boolean(intelModalLeadId)}
+        onClose={() => setIntelModalLeadId(null)}
+        leadId={intelModalLeadId}
+      />
     </div>
   );
 }

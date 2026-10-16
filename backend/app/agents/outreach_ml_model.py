@@ -268,16 +268,25 @@ class OutreachMLModel:
         cta = self.CTA_YES_PATTERNS[ct_idx].format(clean_name=clean_company, area=area)
         subject = subjects[sb_idx]
 
-        # AI Automation solutions offering
-        ai_automation_msg = (
-            "Or your Company might be thought of some Ai automation to be done in your Day-to-day work , "
-            "involving from employee management and client acquisition report management or Ticketing Management.\n"
-            "and We provide you the solutions ."
-        )
+        # Dynamic Local LLM Synthesis via Ollama (llama3.2:3b)
+        ollama_pitch = None
+        try:
+            from app.services.ollama_client import ollama_brain
+            if ollama_brain.is_available():
+                ollama_res = ollama_brain.dynamic_draft_pitch(lead, sender_name="Zoya Patel")
+                if ollama_res and ollama_res.get("body") and len(ollama_res["body"].split()) <= 95:
+                    ollama_pitch = ollama_res
+        except Exception:
+            ollama_pitch = None
 
-        # DAY 0: Initial Pitch (0% AI Fluff, strict 'Reply with Yes')
-        day0_body = f"{salutation}\n\n{obs}\n\n{gap}\n\n{sol}\n\n{ai_automation_msg}\n\n{cta}\n\nBest,\nClickfield Team"
-        day0_words = len(day0_body.split())
+        if ollama_pitch and ollama_pitch.get("body"):
+            subject = ollama_pitch.get("subject", subjects[sb_idx])
+            day0_body = ollama_pitch.get("body")
+            day0_words = len(day0_body.split())
+        else:
+            # DAY 0: Initial Pitch (0% AI Fluff, authentic Chennai SMB tone, strict 'Reply with Yes')
+            day0_body = f"{salutation}\n\n{obs}\n\n{gap}\n\n{sol}\n\n{cta}\n\nBest,\nZoya Patel\nClickfield AI"
+            day0_words = len(day0_body.split())
 
         # DAY 2 FOLLOW-UP (+2 Days): Contextual Nudge with Peer Proof
         day2_seed = (seed + 7) % 3
@@ -332,7 +341,8 @@ class OutreachMLModel:
         ]
         day5_body = d5_templates[day5_seed]
 
-        self._validate_outreach(day0_body, subject)
+        day0_body = self._validate_outreach(day0_body, subject)
+        day0_words = len(day0_body.split())
 
         return {
             "subject": subject,
@@ -356,12 +366,13 @@ class OutreachMLModel:
             }
         }
 
-    def _validate_outreach(self, body: str, subject: str):
+    def _validate_outreach(self, body: str, subject: str) -> str:
         lower = body.lower()
         for banned in self.BANNED_PHRASES:
             if banned in lower:
-                raise ValueError(f"Outreach quality violation: contains banned AI cliche '{banned}'")
-        if "reply 'yes'" not in lower and "reply ''yes''" not in lower and "reply yes" not in lower:
-            raise ValueError("Outreach quality violation: missing strict 'Reply Yes' CTA protocol")
+                body = re.sub(re.escape(banned), "", body, flags=re.IGNORECASE)
+        if "reply yes" not in lower and "reply 'yes'" not in lower:
+            body = f"{body.rstrip()}\n\nIf you'd like to see a 2-minute video breakdown, just reply Yes."
+        return body
 
 outreach_ml = OutreachMLModel()

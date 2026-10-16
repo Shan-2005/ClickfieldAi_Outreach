@@ -337,14 +337,15 @@ class WebIntelAgent:
             if snippet:
                 discovered_services.append(f"Registry listing: {snippet[:120]}")
 
-        # Overview
-        overview = ""
-        if crawl_result.get("meta_description"):
-            overview = crawl_result["meta_description"]
-        elif crawl_result.get("about_snippets"):
-            overview = crawl_result["about_snippets"][0]
-        elif search_intel and search_intel.get("all_results"):
-            overview = search_intel["all_results"][0].get("snippet", "")
+        # Dynamic Local LLM Extraction via Ollama (llama3.2:3b)
+        ai_extracted_signals = {}
+        try:
+            from app.services.ollama_client import ollama_brain
+            if ollama_brain.is_available() and crawl_result.get("is_live"):
+                raw_context = f"{overview} {' '.join(discovered_services)} {' '.join(crawl_result.get('about_snippets', []))}"
+                ai_extracted_signals = ollama_brain.dynamic_extract_lead(raw_context, target_url or "")
+        except Exception:
+            ai_extracted_signals = {}
 
         return {
             "company_name": company_name,

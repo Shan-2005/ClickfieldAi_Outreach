@@ -290,7 +290,7 @@ export default function LeadsPage({ onOpenOutreach, initialFilter }) {
               title="Launch Ollama autonomous MSME cluster dataset scraper"
             >
               <Sparkles className="w-4 h-4" />
-              <span>AI Dataset Scraper (Ollama)</span>
+              <span>Find Real Leads (Maps & Web)</span>
             </button>
 
             <button

@@ -4,12 +4,9 @@ from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel
 
-from app.agentic_core.agent6_workstation_orchestrator import orchestrator
-from app.agentic_core.agent5_reply_analyst import InboundReplyAgent
-from app.agentic_core.agent_base import get_db_connection
+from app.agentic_core.lead_discovery_orchestrator import orchestrator
 
 router = APIRouter(prefix="/api/agentic", tags=["Ollama Multi-Agent System"])
-reply_agent = InboundReplyAgent()
 
 class CopilotCommandRequest(BaseModel):
     command: str
@@ -41,6 +38,12 @@ class ScrapeDatasetRequest(BaseModel):
     sector: Optional[str] = "Manufacturing"
     query: Optional[str] = None
     max_results: Optional[int] = 5
+    dataset_name: Optional[str] = None
+
+class SaveDatasetRequest(BaseModel):
+    dataset_name: str
+    location: str
+    leads: List[Dict[str, Any]]
 
 @router.get("/summary")
 def get_system_summary():
@@ -277,14 +280,27 @@ def get_supported_scrape_locations():
 @router.post("/scrape-dataset")
 def scrape_dataset_with_ollama(req: ScrapeDatasetRequest):
     """
-    Interactive AI Dataset Scraper powered by Ollama (llama3.2:3b).
-    Extracts authentic MSME leads (<50 staff) with statutory director facts and logs immutable audit trail.
+    Interactive AI Dataset Scraper powered by Google Maps & Ollama.
+    Extracts authentic B2B leads from any location worldwide with zero fabrication.
     """
     res = orchestrator.scrape_dataset_with_ollama(
         location=req.location,
         sector=req.sector or "Manufacturing",
         query=req.query,
-        max_results=req.max_results or 5
+        max_results=req.max_results or 5,
+        dataset_name=req.dataset_name
+    )
+    return res
+
+@router.post("/save-dataset")
+def save_scraped_dataset(req: SaveDatasetRequest):
+    """
+    Saves verified real leads under user-provided dataset name into radar database.
+    """
+    res = orchestrator.save_dataset(
+        dataset_name=req.dataset_name,
+        leads=req.leads,
+        location=req.location
     )
     return res
 

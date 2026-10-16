@@ -5,7 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.db.session import init_db, AsyncSessionLocal
-from app.agents.orchestrator import orchestrator_agent
 from app.api.routes_opportunities import router as opportunities_router
 from app.api.routes_agents import router as agents_router
 from app.api.routes_outreach import router as outreach_router
